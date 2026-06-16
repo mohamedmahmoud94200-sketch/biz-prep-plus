@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -461,7 +461,7 @@ export default function ProformaApp() {
     toast.success("تم تصدير PowerPoint");
   };
 
-  const themeStyle: React.CSSProperties = { ["--accent" as never]: `#${themeColor}` };
+  const themeStyle: CSSProperties = { ["--accent" as never]: `#${themeColor}` };
 
   return (
     <div className="min-h-screen bg-[#f7f8f7]" style={themeStyle}>
