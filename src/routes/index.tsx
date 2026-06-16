@@ -1,29 +1,14 @@
 import { createFileRoute } from "@tanstack/react-router";
+import ProformaApp from "@/components/ProformaApp";
 
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Your App" },
-      { name: "description", content: "Replace this with a one-sentence description of your app." },
-      { property: "og:title", content: "Your App" },
-      { property: "og:description", content: "Replace this with a one-sentence description of your app." },
+      { title: "Proforma Invoice Generator | منشئ فواتير بروفورما" },
+      { name: "description", content: "أنشئ فواتير بروفورما احترافية بسهولة وحمّلها PDF أو PowerPoint جاهزة للإرسال للعميل." },
+      { property: "og:title", content: "Proforma Invoice Generator" },
+      { property: "og:description", content: "Create professional proforma invoices and export to PDF or PowerPoint in one click." },
     ],
   }),
-  component: Index,
+  component: () => <ProformaApp />,
 });
-
-// IMPORTANT: Replace this placeholder. See ./README.md for routing conventions.
-function Index() {
-  return (
-    <div
-      className="flex min-h-screen items-center justify-center"
-      style={{ backgroundColor: "#fcfbf8" }}
-    >
-      <img
-        data-lovable-blank-page-placeholder="REMOVE_THIS"
-        src="https://cdn.gpteng.co/blank-app-v1.svg"
-        alt="Your app will live here!"
-      />
-    </div>
-  );
-}
