@@ -2,21 +2,19 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react"
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Card } from "@/components/ui/card";
 import {
   Plus,
   Trash2,
   FileDown,
   Presentation,
   Upload,
-  FileText,
   Copy,
   Library,
   FilePlus,
   Palette,
   X,
   Package,
+  Printer,
 } from "lucide-react";
 import { toast } from "sonner";
 import jsPDF from "jspdf";
@@ -34,6 +32,8 @@ type Row = {
   setCtn: string;
   pcsSet: string;
   pricePerCtn: string;
+  cbm: string;
+  weight: string;
 };
 
 type Meta = {
@@ -45,6 +45,7 @@ type Meta = {
   date: string;
   title: string;
   notes: string;
+  logo: string; // dataURL
 };
 
 type Proforma = {
@@ -56,7 +57,7 @@ type Proforma = {
   updatedAt: number;
 };
 
-const STORAGE = "proforma-v2";
+const STORAGE = "proforma-v3";
 
 const newRow = (): Row => ({
   id: crypto.randomUUID(),
@@ -69,17 +70,20 @@ const newRow = (): Row => ({
   setCtn: "",
   pcsSet: "",
   pricePerCtn: "",
+  cbm: "",
+  weight: "",
 });
 
 const defaultMeta = (): Meta => ({
-  company: "KOUJAN EGYPT",
-  address: "Arab Republic Egypt, Sadat City, 6th Industrial Zone, Plot No 6098",
-  phone: "00201127388316 / 00201113269982",
+  company: "KOUJAN COMPANY",
+  address: "ARABIC REPUBLIC EGYPT , sadat city svi industrial zone , plot no 6098",
+  phone: "002012728831​4  -  002012​1265982",
   email: "sales@koujanegypt.com",
   customer: "",
   date: new Date().toISOString().slice(0, 10),
   title: "Proforma Invoice",
   notes: "Prices are E.X work",
+  logo: "",
 });
 
 const THEME_PRESETS = [
