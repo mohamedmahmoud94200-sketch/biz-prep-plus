@@ -6,7 +6,6 @@ import {
   Trash2,
   FileDown,
   Presentation,
-  Upload,
   Copy,
   Library,
   FilePlus,
@@ -15,11 +14,17 @@ import {
   Package,
   Printer,
   ImageIcon,
+  Send,
+  Save,
+  Languages,
+  Cloud,
+  CloudOff,
 } from "lucide-react";
 import { toast } from "sonner";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import PptxGenJS from "pptxgenjs";
+import { supabase } from "@/integrations/supabase/client";
 
 type Row = {
   id: string;
@@ -57,7 +62,84 @@ type Proforma = {
   updatedAt: number;
 };
 
-const STORAGE = "proforma-v3";
+type Lang = "ar" | "en";
+const LANG_KEY = "proforma-lang";
+const CLIENT_ID = (() => {
+  if (typeof window === "undefined") return "ssr";
+  let id = localStorage.getItem("pf-client-id");
+  if (!id) {
+    id = crypto.randomUUID();
+    localStorage.setItem("pf-client-id", id);
+  }
+  return id;
+})();
+
+const T = {
+  ar: {
+    title: "بروفورما إنفويس",
+    print: "طباعة / PDF",
+    pdf: "PDF (إنجليزي)",
+    pptx: "باوربوينت",
+    newInvoice: "بروفورما جديدة",
+    addItem: "إضافة منتج",
+    library: "مكتبة المنتجات",
+    theme: "اللون",
+    save: "حفظ الآن",
+    saved: "تم الحفظ ☁",
+    saving: "جارى الحفظ…",
+    offline: "غير متصل",
+    lang: "EN",
+    customer: "العميل",
+    date: "التاريخ",
+    cols: ["م","اسم المنتج","الوصف","صورة","التغليف","كراتين","دزينة/كرتون","سيت/كرتون","قطع/سيت","سعر الكرتون","الإجمالى","CBM","إجمالى CBM","الوزن","إجمالى الوزن","إجراءات"],
+    totals: { ctn: "إجمالى الكراتين", cbm: "إجمالى CBM", weight: "إجمالى الوزن", amount: "الإجمالى" },
+    sendTo: "إرسال لبروفورمات",
+    pickTargets: "اختار البروفورمات اللى عايز تبعت لها المنتج",
+    sendNow: "إرسال",
+    cancel: "إلغاء",
+    rename: "تغيير الاسم",
+    delete: "حذف",
+    duplicate: "نسخ",
+    productLib: "مكتبة المنتجات",
+    addFromLib: "اضغط على المنتج لإضافته للبروفورما الحالية",
+    search: "بحث…",
+    noProducts: "مفيش منتجات لسه",
+    notes: "ملاحظات",
+    arabicTip: "لطباعة بالعربى استخدم زر «طباعة / PDF»",
+  },
+  en: {
+    title: "Proforma Invoice",
+    print: "Print / PDF",
+    pdf: "PDF (English)",
+    pptx: "PowerPoint",
+    newInvoice: "New Invoice",
+    addItem: "Add Item",
+    library: "Library",
+    theme: "Theme",
+    save: "Save Now",
+    saved: "Saved ☁",
+    saving: "Saving…",
+    offline: "Offline",
+    lang: "ع",
+    customer: "CUSTOMER",
+    date: "DATE",
+    cols: ["No","Item Name","Description","Image","Packing","Ctn","Doz/Ctn","Set/Ctn","Pcs/Set","Price/Ctn","T.Amount","CBM","T.CBM","Weight","T.Weight","Actions"],
+    totals: { ctn: "T.Ctn", cbm: "T.CBM", weight: "T.Weight", amount: "T.Amount" },
+    sendTo: "Send to proformas",
+    pickTargets: "Pick the proformas to copy this item to",
+    sendNow: "Send",
+    cancel: "Cancel",
+    rename: "Rename",
+    delete: "Delete",
+    duplicate: "Duplicate",
+    productLib: "Product Library",
+    addFromLib: "Click any item to add it to the current proforma",
+    search: "Search…",
+    noProducts: "No products yet",
+    notes: "Notes",
+    arabicTip: "For Arabic printing, use the Print / PDF button",
+  },
+} as const;
 
 const newRow = (): Row => ({
   id: crypto.randomUUID(),
