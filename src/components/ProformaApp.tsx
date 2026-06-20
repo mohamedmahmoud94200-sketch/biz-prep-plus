@@ -1,107 +1,89 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
-  Plus,
-  Trash2,
-  FileDown,
-  Presentation,
-  Upload,
-  Copy,
-  Library,
-  FilePlus,
-  Palette,
-  X,
-  Package,
-  Printer,
-  ImageIcon,
+  Plus, Trash2, FileDown, Presentation, Copy, Library, FilePlus, Palette, X,
+  Package, Printer, ImageIcon, Send, Save, Languages, Cloud,
 } from "lucide-react";
 import { toast } from "sonner";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import PptxGenJS from "pptxgenjs";
+import { supabase } from "@/integrations/supabase/client";
 
 type Row = {
-  id: string;
-  itemName: string;
-  description: string;
-  image: string;
-  packing: string;
-  ctn: string;
-  dozCtn: string;
-  setCtn: string;
-  pcsSet: string;
-  pricePerCtn: string;
-  cbm: string;
-  weight: string;
+  id: string; itemName: string; description: string; image: string; packing: string;
+  ctn: string; dozCtn: string; setCtn: string; pcsSet: string; pricePerCtn: string;
+  cbm: string; weight: string;
 };
-
 type Meta = {
-  company: string;
-  address: string;
-  phone: string;
-  email: string;
-  customer: string;
-  date: string;
-  title: string;
-  notes: string;
-  logo: string;
+  company: string; address: string; phone: string; email: string;
+  customer: string; date: string; title: string; notes: string; logo: string;
 };
-
 type Proforma = {
-  id: string;
-  name: string;
-  meta: Meta;
-  rows: Row[];
-  themeColor: string;
-  updatedAt: number;
+  id: string; name: string; meta: Meta; rows: Row[]; themeColor: string; sortOrder: number;
 };
+type Lang = "ar" | "en";
 
-const STORAGE = "proforma-v3";
+const LANG_KEY = "proforma-lang";
+const CLIENT_ID = (() => {
+  if (typeof window === "undefined") return "ssr";
+  let id = localStorage.getItem("pf-client-id");
+  if (!id) { id = crypto.randomUUID(); localStorage.setItem("pf-client-id", id); }
+  return id;
+})();
+
+const T = {
+  ar: {
+    print: "طباعة / PDF", pdf: "PDF (إنجليزى)", pptx: "PowerPoint",
+    newInvoice: "بروفورما جديدة", addItem: "إضافة منتج", library: "مكتبة المنتجات",
+    theme: "اللون", save: "حفظ الآن", saved: "محفوظ ☁", saving: "جارى الحفظ…",
+    lang: "EN", customer: "العميل", date: "التاريخ",
+    cols: ["م","اسم المنتج","الوصف","صورة","التغليف","كراتين","دزينة/كرتون","سيت/كرتون","قطع/سيت","سعر الكرتون","الإجمالى","CBM","إجمالى CBM","الوزن","إجمالى الوزن","إجراءات"],
+    totals: { ctn:"إجمالى الكراتين", cbm:"إجمالى CBM", weight:"إجمالى الوزن", amount:"الإجمالى" },
+    sendTo: "إرسال لبروفورمات", pickTargets: "اختار البروفورمات اللى عايز تبعت لها المنتج",
+    sendNow: "إرسال", cancel: "إلغاء", rename: "تغيير الاسم", delete: "حذف", duplicate: "نسخ",
+    productLib: "مكتبة المنتجات", addFromLib: "اضغط على المنتج لإضافته للبروفورما الحالية",
+    search: "بحث…", noProducts: "مفيش منتجات لسه",
+    arabicTip: "للطباعة بالعربى استخدم زر «طباعة / PDF» — هيظهر زى البروفورما بالظبط",
+    proforma: "بروفورما",
+  },
+  en: {
+    print: "Print / PDF", pdf: "PDF (English)", pptx: "PowerPoint",
+    newInvoice: "New Invoice", addItem: "Add Item", library: "Library",
+    theme: "Theme", save: "Save Now", saved: "Saved ☁", saving: "Saving…",
+    lang: "ع", customer: "CUSTOMER", date: "DATE",
+    cols: ["No","Item Name","Description","Image","Packing","Ctn","Doz/Ctn","Set/Ctn","Pcs/Set","Price/Ctn","T.Amount","CBM","T.CBM","Weight","T.Weight","Actions"],
+    totals: { ctn:"T.Ctn", cbm:"T.CBM", weight:"T.Weight", amount:"T.Amount" },
+    sendTo: "Send to proformas", pickTargets: "Pick the proformas to copy this item to",
+    sendNow: "Send", cancel: "Cancel", rename: "Rename", delete: "Delete", duplicate: "Duplicate",
+    productLib: "Product Library", addFromLib: "Click any item to add it to the current proforma",
+    search: "Search…", noProducts: "No products yet",
+    arabicTip: "For Arabic printing use the Print / PDF button",
+    proforma: "proforma",
+  },
+} as const;
 
 const newRow = (): Row => ({
-  id: crypto.randomUUID(),
-  itemName: "",
-  description: "",
-  image: "",
-  packing: "",
-  ctn: "",
-  dozCtn: "",
-  setCtn: "",
-  pcsSet: "",
-  pricePerCtn: "",
-  cbm: "",
-  weight: "",
+  id: crypto.randomUUID(), itemName: "", description: "", image: "", packing: "",
+  ctn: "", dozCtn: "", setCtn: "", pcsSet: "", pricePerCtn: "", cbm: "", weight: "",
 });
-
 const defaultMeta = (): Meta => ({
   company: "KOUJAN COMPANY",
   address: "ARABIC REPUBLIC EGYPT , sadat city svi industrial zone , plot no 6098",
-  phone: "002012728831​4  -  002012​1265982",
+  phone: "00201272883314  -  002012​1265982",
   email: "sales@koujanegypt.com  /  info@koujanegypt.com",
-  customer: "",
-  date: new Date().toISOString().slice(0, 10),
-  title: "Proforma Invoice",
-  notes: "Prices are E.X work",
-  logo: "",
+  customer: "", date: new Date().toISOString().slice(0,10),
+  title: "Proforma Invoice", notes: "Prices are E.X work", logo: "",
 });
-
 const THEME_PRESETS = [
-  { name: "Emerald", color: "2BB39B" },
-  { name: "Navy", color: "1E3A8A" },
-  { name: "Crimson", color: "B91C1C" },
-  { name: "Gold", color: "B8860B" },
-  { name: "Charcoal", color: "1A1A1A" },
-  { name: "Teal", color: "0F766E" },
+  { name:"Emerald", color:"2BB39B" }, { name:"Navy", color:"1E3A8A" },
+  { name:"Crimson", color:"B91C1C" }, { name:"Gold", color:"B8860B" },
+  { name:"Charcoal", color:"1A1A1A" }, { name:"Teal", color:"0F766E" },
 ];
-
-const newProforma = (name: string): Proforma => ({
-  id: crypto.randomUUID(),
-  name,
-  meta: defaultMeta(),
-  rows: [newRow()],
-  themeColor: "2BB39B",
-  updatedAt: Date.now(),
+const newProforma = (name: string, sortOrder = 0): Proforma => ({
+  id: crypto.randomUUID(), name, meta: defaultMeta(), rows: [newRow()],
+  themeColor: "2BB39B", sortOrder,
 });
 
 const num = (s: string) => parseFloat(s || "0") || 0;
@@ -110,120 +92,155 @@ const tCbm = (r: Row) => +(num(r.ctn) * num(r.cbm)).toFixed(3);
 const tWeight = (r: Row) => +(num(r.ctn) * num(r.weight)).toFixed(2);
 
 async function fileToDataURL(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const fr = new FileReader();
-    fr.onload = () => resolve(fr.result as string);
-    fr.onerror = reject;
-    fr.readAsDataURL(file);
-  });
+  return new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(fr.result as string); fr.onerror = rej; fr.readAsDataURL(file); });
 }
-
 async function processImage(file: File): Promise<string> {
   const raw = await fileToDataURL(file);
   return new Promise((resolve) => {
     const img = new Image();
     img.onload = () => {
-      const MAX = 1400;
-      let w = img.width;
-      let h = img.height;
-      if (w > MAX || h > MAX) {
-        const ratio = Math.min(MAX / w, MAX / h);
-        w = Math.round(w * ratio);
-        h = Math.round(h * ratio);
-      }
-      const canvas = document.createElement("canvas");
-      canvas.width = w;
-      canvas.height = h;
-      const ctx = canvas.getContext("2d")!;
-      ctx.imageSmoothingEnabled = true;
-      ctx.imageSmoothingQuality = "high";
-      ctx.fillStyle = "#FFFFFF";
-      ctx.fillRect(0, 0, w, h);
-      ctx.drawImage(img, 0, 0, w, h);
-      resolve(canvas.toDataURL("image/jpeg", 0.92));
+      const MAX = 1200; let w = img.width, h = img.height;
+      if (w > MAX || h > MAX) { const r = Math.min(MAX/w, MAX/h); w = Math.round(w*r); h = Math.round(h*r); }
+      const c = document.createElement("canvas"); c.width = w; c.height = h;
+      const ctx = c.getContext("2d")!; ctx.imageSmoothingQuality = "high";
+      ctx.fillStyle = "#FFF"; ctx.fillRect(0,0,w,h); ctx.drawImage(img,0,0,w,h);
+      resolve(c.toDataURL("image/jpeg", 0.88));
     };
-    img.onerror = () => resolve(raw);
-    img.src = raw;
+    img.onerror = () => resolve(raw); img.src = raw;
   });
 }
-
-function hexRgb(hex: string): [number, number, number] {
-  const h = hex.replace("#", "");
-  const f = h.length === 3 ? h.split("").map((c) => c + c).join("") : h;
-  const n = parseInt(f, 16);
-  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+function hexRgb(hex: string): [number,number,number] {
+  const h = hex.replace("#",""); const f = h.length === 3 ? h.split("").map(c=>c+c).join("") : h;
+  const n = parseInt(f, 16); return [(n>>16)&255,(n>>8)&255,n&255];
 }
 
+/* ───────────────────────────  COMPONENT  ─────────────────────────── */
+
 export default function ProformaApp() {
-  const [proformas, setProformas] = useState<Proforma[]>(() => [newProforma("Proforma 1")]);
+  const [proformas, setProformas] = useState<Proforma[]>([]);
   const [activeId, setActiveId] = useState<string>("");
+  const [loaded, setLoaded] = useState(false);
   const [showLibrary, setShowLibrary] = useState(false);
   const [showThemes, setShowThemes] = useState(false);
+  const [saveState, setSaveState] = useState<"idle"|"saving"|"saved">("idle");
+  const [lang, setLang] = useState<Lang>(() => (typeof window !== "undefined" && (localStorage.getItem(LANG_KEY) as Lang)) || "ar");
+  const [sendItem, setSendItem] = useState<Row | null>(null);
   const logoRef = useRef<HTMLInputElement>(null);
+  const dirtyIds = useRef<Set<string>>(new Set());
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const ownUpdate = useRef<Map<string, number>>(new Map()); // id → ts of own write
+  const t = T[lang];
 
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE);
-      if (raw) {
-        const p = JSON.parse(raw);
-        if (Array.isArray(p.proformas) && p.proformas.length) {
-          // backfill new fields
-          const fixed = p.proformas.map((pf: Proforma) => ({
-            ...pf,
-            meta: { ...defaultMeta(), ...pf.meta },
-            rows: pf.rows.map((r) => ({ ...newRow(), ...r })),
-          }));
-          setProformas(fixed);
-          setActiveId(p.activeId && fixed.find((x: Proforma) => x.id === p.activeId) ? p.activeId : fixed[0].id);
-          return;
-        }
-      }
-    } catch {}
-    setActiveId((cur) => cur || proformas[0]?.id || "");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  /* ----- load + realtime ----- */
+  const loadAll = useCallback(async () => {
+    const { data, error } = await supabase.from("proformas").select("id, name, data, sort_order").order("sort_order").order("created_at");
+    if (error) { console.error(error); return; }
+    const list: Proforma[] = (data ?? []).map((r) => {
+      const d = (r.data ?? {}) as Partial<Proforma>;
+      return {
+        id: r.id, name: r.name, sortOrder: r.sort_order,
+        meta: { ...defaultMeta(), ...(d.meta ?? {}) },
+        rows: (d.rows ?? [newRow()]).map((x) => ({ ...newRow(), ...x })),
+        themeColor: d.themeColor ?? "2BB39B",
+      };
+    });
+    setProformas(list);
   }, []);
 
   useEffect(() => {
-    if (!activeId) return;
-    try {
-      localStorage.setItem(STORAGE, JSON.stringify({ proformas, activeId }));
-    } catch (e) {
-      console.warn("storage failed", e);
+    (async () => {
+      await loadAll();
+      setLoaded(true);
+    })();
+    const ch = supabase
+      .channel("proformas-rt")
+      .on("postgres_changes", { event: "*", schema: "public", table: "proformas" }, (payload) => {
+        const id = (payload.new as { id?: string } | null)?.id ?? (payload.old as { id?: string } | null)?.id;
+        if (id && ownUpdate.current.has(id) && Date.now() - (ownUpdate.current.get(id) ?? 0) < 2500) return;
+        loadAll();
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, [loadAll]);
+
+  // ensure at least one + pick active
+  useEffect(() => {
+    if (!loaded) return;
+    if (proformas.length === 0) {
+      const p = newProforma(lang === "ar" ? "بروفورما 1" : "Proforma 1", 0);
+      ownUpdate.current.set(p.id, Date.now());
+      supabase.from("proformas").insert({ id: p.id, name: p.name, sort_order: 0, data: { meta: p.meta, rows: p.rows, themeColor: p.themeColor } }).then(loadAll);
+      return;
     }
-  }, [proformas, activeId]);
+    if (!activeId || !proformas.find((p) => p.id === activeId)) setActiveId(proformas[0].id);
+  }, [loaded, proformas, activeId, lang, loadAll]);
+
+  useEffect(() => { try { localStorage.setItem(LANG_KEY, lang); } catch {} }, [lang]);
 
   const active = proformas.find((p) => p.id === activeId) ?? proformas[0];
   const meta = active?.meta ?? defaultMeta();
   const rows = active?.rows ?? [];
   const themeColor = active?.themeColor ?? "2BB39B";
+  const accent = `#${themeColor}`;
 
-  const updateActive = (patch: Partial<Proforma>) =>
-    setProformas((ps) => ps.map((p) => (p.id === active?.id ? { ...p, ...patch, updatedAt: Date.now() } : p)));
-  const setMeta = (m: Meta) => updateActive({ meta: m });
-  const setRows = (updater: Row[] | ((rs: Row[]) => Row[])) =>
-    updateActive({ rows: typeof updater === "function" ? (updater as (r: Row[]) => Row[])(rows) : updater });
-  const setThemeColor = (c: string) => updateActive({ themeColor: c.replace("#", "") });
-
-  const createProforma = () => {
-    const p = newProforma(`Proforma ${proformas.length + 1}`);
-    // inherit company info + logo + theme from active
-    if (active) {
-      p.meta = { ...active.meta, customer: "", date: new Date().toISOString().slice(0, 10) };
-      p.themeColor = active.themeColor;
+  /* ----- save logic ----- */
+  const flushSave = useCallback(async () => {
+    if (dirtyIds.current.size === 0) return;
+    const ids = [...dirtyIds.current]; dirtyIds.current.clear();
+    setSaveState("saving");
+    const targets = proformas.filter((p) => ids.includes(p.id));
+    for (const p of targets) {
+      ownUpdate.current.set(p.id, Date.now());
+      const { error } = await supabase.from("proformas").upsert({
+        id: p.id, name: p.name, sort_order: p.sortOrder,
+        data: { meta: p.meta, rows: p.rows, themeColor: p.themeColor },
+      });
+      if (error) { console.error(error); toast.error("فشل الحفظ / Save failed"); setSaveState("idle"); return; }
     }
-    setProformas((ps) => [...ps, p]);
-    setActiveId(p.id);
-    toast.success("بروفورما جديدة / New proforma");
+    setSaveState("saved");
+    setTimeout(() => setSaveState((s) => (s === "saved" ? "idle" : s)), 1500);
+  }, [proformas]);
+
+  const scheduleSave = useCallback((id: string) => {
+    dirtyIds.current.add(id);
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(flushSave, 800);
+  }, [flushSave]);
+
+  const updateActive = (patch: Partial<Proforma>) => {
+    if (!active) return;
+    setProformas((ps) => ps.map((p) => (p.id === active.id ? { ...p, ...patch } : p)));
+    scheduleSave(active.id);
   };
-  const deleteProforma = (id: string) => {
-    if (proformas.length === 1) {
-      toast.error("لا يمكن حذف الوحيدة / Can't delete only one");
-      return;
-    }
-    if (!confirm("حذف هذه البروفورما؟ / Delete this proforma?")) return;
+  const setMeta = (m: Meta) => updateActive({ meta: m });
+  const setRows = (u: Row[] | ((rs: Row[]) => Row[])) =>
+    updateActive({ rows: typeof u === "function" ? (u as (r: Row[]) => Row[])(rows) : u });
+  const setThemeColor = (c: string) => updateActive({ themeColor: c.replace("#","") });
+
+  /* ----- proforma management ----- */
+  const createProforma = async () => {
+    const p = newProforma(lang === "ar" ? `بروفورما ${proformas.length+1}` : `Proforma ${proformas.length+1}`, proformas.length);
+    if (active) { p.meta = { ...active.meta, customer: "", date: new Date().toISOString().slice(0,10) }; p.themeColor = active.themeColor; }
+    ownUpdate.current.set(p.id, Date.now());
+    const { error } = await supabase.from("proformas").insert({ id: p.id, name: p.name, sort_order: p.sortOrder, data: { meta: p.meta, rows: p.rows, themeColor: p.themeColor } });
+    if (error) { toast.error("فشل الإنشاء"); return; }
+    setProformas((ps) => [...ps, p]); setActiveId(p.id);
+    toast.success(lang === "ar" ? "تم الإنشاء" : "Created");
+  };
+  const deleteProforma = async (id: string) => {
+    if (proformas.length === 1) { toast.error(lang === "ar" ? "ميصحش تحذف الوحيدة" : "Can't delete the only one"); return; }
+    if (!confirm(lang === "ar" ? "تأكيد الحذف؟" : "Delete this proforma?")) return;
+    ownUpdate.current.set(id, Date.now());
+    await supabase.from("proformas").delete().eq("id", id);
     const next = proformas.filter((p) => p.id !== id);
-    setProformas(next);
-    if (activeId === id) setActiveId(next[0].id);
+    setProformas(next); if (activeId === id) setActiveId(next[0]?.id ?? "");
+  };
+  const renameProforma = (id: string) => {
+    const cur = proformas.find((p) => p.id === id); if (!cur) return;
+    const n = prompt(lang === "ar" ? "اسم البروفورما" : "Proforma name", cur.name);
+    if (!n) return;
+    setProformas((ps) => ps.map((p) => (p.id === id ? { ...p, name: n } : p)));
+    scheduleSave(id);
   };
 
   const totals = useMemo(() => {
@@ -234,493 +251,301 @@ export default function ProformaApp() {
     return { tCtn, tAmount, tCBM, tWt };
   }, [rows]);
 
-  const updateRow = (id: string, patch: Partial<Row>) =>
-    setRows((rs) => rs.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+  const updateRow = (id: string, patch: Partial<Row>) => setRows((rs) => rs.map((r) => (r.id === id ? { ...r, ...patch } : r)));
   const removeRow = (id: string) => setRows((rs) => rs.filter((r) => r.id !== id));
   const addRow = () => setRows((rs) => [...rs, newRow()]);
   const duplicateRow = (id: string) =>
-    setRows((rs) => {
-      const i = rs.findIndex((r) => r.id === id);
-      if (i < 0) return rs;
-      const out = [...rs];
-      out.splice(i + 1, 0, { ...rs[i], id: crypto.randomUUID() });
-      return out;
-    });
+    setRows((rs) => { const i = rs.findIndex((r) => r.id === id); if (i < 0) return rs;
+      const out = [...rs]; out.splice(i+1, 0, { ...rs[i], id: crypto.randomUUID() }); return out; });
+
+  const sendRowToProformas = async (row: Row, targetIds: string[]) => {
+    if (targetIds.length === 0) return;
+    setSaveState("saving");
+    for (const tid of targetIds) {
+      const cur = proformas.find((p) => p.id === tid); if (!cur) continue;
+      const updatedRows = [...cur.rows, { ...row, id: crypto.randomUUID() }];
+      ownUpdate.current.set(tid, Date.now());
+      const { error } = await supabase.from("proformas").update({
+        data: { meta: cur.meta, rows: updatedRows, themeColor: cur.themeColor }
+      }).eq("id", tid);
+      if (error) { console.error(error); toast.error("فشل الإرسال"); setSaveState("idle"); return; }
+      setProformas((ps) => ps.map((p) => (p.id === tid ? { ...p, rows: updatedRows } : p)));
+    }
+    setSaveState("saved"); setTimeout(() => setSaveState("idle"), 1500);
+    toast.success(lang === "ar" ? `تم الإرسال إلى ${targetIds.length} بروفورما` : `Sent to ${targetIds.length} proforma(s)`);
+  };
 
   const library = useMemo(() => {
-    const seen = new Set<string>();
-    const items: { row: Row; from: string }[] = [];
-    proformas.forEach((p) =>
-      p.rows.forEach((r) => {
-        if (!r.itemName && !r.image) return;
-        const key = `${r.itemName}|${r.image.slice(0, 60)}`;
-        if (seen.has(key)) return;
-        seen.add(key);
-        items.push({ row: r, from: p.name });
-      }),
-    );
+    const seen = new Set<string>(); const items: { row: Row; from: string }[] = [];
+    proformas.forEach((p) => p.rows.forEach((r) => {
+      if (!r.itemName && !r.image) return;
+      const key = `${r.itemName}|${r.image.slice(0, 60)}`;
+      if (seen.has(key)) return; seen.add(key); items.push({ row: r, from: p.name });
+    }));
     return items;
   }, [proformas]);
 
-  const copyFromLibrary = (r: Row) => {
-    setRows((rs) => [...rs, { ...r, id: crypto.randomUUID() }]);
-    toast.success("تمت الإضافة / Added");
-  };
+  const copyFromLibrary = (r: Row) => { setRows((rs) => [...rs, { ...r, id: crypto.randomUUID() }]); toast.success(lang === "ar" ? "تمت الإضافة" : "Added"); };
 
   const onImage = async (id: string, f: File | null, field: "image" | "packing") => {
     if (!f) return;
     if (f.size > 10 * 1024 * 1024) return toast.error("الصورة كبيرة (>10MB)");
-    const url = await processImage(f);
-    updateRow(id, { [field]: url } as Partial<Row>);
+    const url = await processImage(f); updateRow(id, { [field]: url } as Partial<Row>);
   };
+  const onLogo = async (f: File | null) => { if (!f) return; const url = await processImage(f); setMeta({ ...meta, logo: url }); };
 
-  const onLogo = async (f: File | null) => {
-    if (!f) return;
-    const url = await processImage(f);
-    setMeta({ ...meta, logo: url });
-  };
+  const fmtDate = (d: string) => { if (!d) return ""; const [y,m,da] = d.split("-"); return `${da}/${m}/${y}`; };
 
-  const fmtDate = (d: string) => {
-    if (!d) return "";
-    const [y, m, da] = d.split("-");
-    return `${da}/${m}/${y}`;
-  };
-
-  /* ================= PDF EXPORT ================= */
+  /* ───── PDF (English, for Arabic the user uses Print) ───── */
   const exportPDF = async () => {
     const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
-    const pageW = doc.internal.pageSize.getWidth();
-    const pageH = doc.internal.pageSize.getHeight();
-    const [tr, tg, tb] = hexRgb(themeColor);
-    const M = 24;
-
-    // Teal banner with logo + "proforma"
-    doc.setFillColor(tr, tg, tb);
-    doc.roundedRect(M, M, pageW - M * 2, 90, 6, 6, "F");
-    // Logo white box
-    doc.setFillColor(255, 255, 255);
-    doc.roundedRect(M + 14, M + 14, 62, 62, 4, 4, "F");
-    if (meta.logo) {
-      try { doc.addImage(meta.logo, "JPEG", M + 18, M + 18, 54, 54, undefined, "FAST"); } catch {}
-    } else {
-      doc.setTextColor(tr, tg, tb);
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(7);
-      const lines = meta.company.split(" ");
-      lines.forEach((l, i) => doc.text(l, M + 45, M + 38 + i * 9, { align: "center" }));
-    }
-    doc.setTextColor(255, 255, 255);
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(42);
-    doc.text("proforma", pageW - M - 18, M + 64, { align: "right" });
-
-    // Customer / Date row
-    const y2 = M + 110;
-    doc.setTextColor(120);
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(8);
-    doc.text("CUSTOMER", M + 6, y2);
-    doc.text("DATE", pageW - M - 6, y2, { align: "right" });
-    doc.setTextColor(20);
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(13);
-    doc.text(meta.customer || "—", M + 6, y2 + 16);
-    doc.text(fmtDate(meta.date), pageW - M - 6, y2 + 16, { align: "right" });
-    doc.setDrawColor(tr, tg, tb);
-    doc.setLineWidth(1);
-    doc.line(M + 6, y2 + 22, pageW / 2 - 10, y2 + 22);
-    doc.line(pageW / 2 + 10, y2 + 22, pageW - M - 6, y2 + 22);
-
-    // Table
-    const head = [["No", "Item Name", "Description", "Image", "Packing", "Ctn", "Doz/Ctn", "Set/Ctn", "Pcs/Set", "Price/Ctn", "T.Amount", "CBM", "T.CBM", "Weight", "T.Weight"]];
-    const body = rows.map((r, i) => [
-      i + 1,
-      r.itemName,
-      r.description,
-      "", "",
-      r.ctn, r.dozCtn, r.setCtn, r.pcsSet, r.pricePerCtn,
-      amount(r) || "",
-      r.cbm, tCbm(r) || "",
-      r.weight, tWeight(r) || "",
-    ]);
-
+    const pageW = doc.internal.pageSize.getWidth(); const pageH = doc.internal.pageSize.getHeight();
+    const [tr,tg,tb] = hexRgb(themeColor); const M = 24;
+    doc.setFillColor(tr,tg,tb); doc.roundedRect(M, M, pageW-M*2, 90, 6, 6, "F");
+    doc.setFillColor(255,255,255); doc.roundedRect(M+14, M+14, 62, 62, 4, 4, "F");
+    if (meta.logo) { try { doc.addImage(meta.logo, "JPEG", M+18, M+18, 54, 54, undefined, "FAST"); } catch {} }
+    doc.setTextColor(255,255,255); doc.setFont("helvetica","bold"); doc.setFontSize(42);
+    doc.text("proforma", pageW-M-18, M+64, { align: "right" });
+    const y2 = M+110;
+    doc.setTextColor(120); doc.setFont("helvetica","normal"); doc.setFontSize(8);
+    doc.text("CUSTOMER", M+6, y2); doc.text("DATE", pageW-M-6, y2, { align: "right" });
+    doc.setTextColor(20); doc.setFont("helvetica","bold"); doc.setFontSize(13);
+    doc.text(meta.customer || "—", M+6, y2+16); doc.text(fmtDate(meta.date), pageW-M-6, y2+16, { align: "right" });
+    doc.setDrawColor(tr,tg,tb); doc.setLineWidth(1);
+    doc.line(M+6, y2+22, pageW/2-10, y2+22); doc.line(pageW/2+10, y2+22, pageW-M-6, y2+22);
+    const head = [["No","Item Name","Description","Image","Packing","Ctn","Doz/Ctn","Set/Ctn","Pcs/Set","Price/Ctn","T.Amount","CBM","T.CBM","Weight","T.Weight"]];
+    const body = rows.map((r,i) => [i+1, r.itemName, r.description, "", "", r.ctn, r.dozCtn, r.setCtn, r.pcsSet, r.pricePerCtn, amount(r) || "", r.cbm, tCbm(r) || "", r.weight, tWeight(r) || ""]);
     autoTable(doc, {
-      head, body,
-      startY: y2 + 36,
-      margin: { left: M, right: M },
-      styles: { fontSize: 7.5, cellPadding: 2, valign: "middle", halign: "center", minCellHeight: 56, lineColor: [230, 230, 230] },
-      headStyles: { fillColor: [tr, tg, tb], textColor: 255, fontSize: 8, minCellHeight: 22 },
-      columnStyles: {
-        0: { cellWidth: 24 },
-        1: { halign: "left", cellWidth: 70 },
-        2: { halign: "left", cellWidth: 80 },
-        3: { cellWidth: 60 },
-        4: { cellWidth: 60 },
-      },
+      head, body, startY: y2+36, margin: { left: M, right: M },
+      styles: { fontSize: 7.5, cellPadding: 2, valign: "middle", halign: "center", minCellHeight: 56, lineColor: [230,230,230] },
+      headStyles: { fillColor: [tr,tg,tb], textColor: 255, fontSize: 8, minCellHeight: 22 },
+      columnStyles: { 0: { cellWidth: 24 }, 1: { halign: "left", cellWidth: 70 }, 2: { halign: "left", cellWidth: 80 }, 3: { cellWidth: 60 }, 4: { cellWidth: 60 } },
       didDrawCell: (data) => {
-        if (data.section !== "body") return;
-        const r = rows[data.row.index];
-        if (!r) return;
-        const drawImg = (src: string) => {
-          if (!src) return;
-          try {
-            const pad = 2;
-            const size = Math.min(data.cell.width, data.cell.height) - pad * 2;
-            const x = data.cell.x + (data.cell.width - size) / 2;
-            const y = data.cell.y + (data.cell.height - size) / 2;
-            doc.addImage(src, "JPEG", x, y, size, size, undefined, "FAST");
-          } catch {}
+        if (data.section !== "body") return; const r = rows[data.row.index]; if (!r) return;
+        const drawImg = (src: string) => { if (!src) return;
+          try { const pad = 2; const size = Math.min(data.cell.width, data.cell.height) - pad*2;
+            const x = data.cell.x + (data.cell.width-size)/2; const y = data.cell.y + (data.cell.height-size)/2;
+            doc.addImage(src, "JPEG", x, y, size, size, undefined, "FAST"); } catch {}
         };
         if (data.column.index === 3) drawImg(r.image);
         if (data.column.index === 4) drawImg(r.packing);
       },
     });
-
     const finalY = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 12;
-
-    // Notes (right)
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(9);
-    doc.setTextColor(20);
-    doc.text(`• ${meta.notes}`, pageW - M, finalY, { align: "right" });
-
-    // 4 total cards
+    doc.setFont("helvetica","bold"); doc.setFontSize(9); doc.setTextColor(20);
+    doc.text(`• ${meta.notes}`, pageW-M, finalY, { align: "right" });
     const cards = [
       { label: "T.Ctn", val: String(totals.tCtn) },
       { label: "T.CBM", val: totals.tCBM.toFixed(2) },
       { label: "T.Weight", val: totals.tWt.toFixed(2) },
       { label: "T.Amount", val: String(totals.tAmount) },
     ];
-    const cw = 110;
-    const ch = 56;
-    const gap = 10;
-    const totalW = cw * 4 + gap * 3;
-    let cx = pageW - M - totalW;
-    const cy = finalY + 10;
+    const cw = 110, ch = 56, gap = 10; const totalW = cw*4 + gap*3;
+    let cx = pageW - M - totalW; const cy = finalY + 10;
     cards.forEach((c) => {
-      doc.setDrawColor(tr, tg, tb);
-      doc.setLineWidth(1);
-      doc.setFillColor(255, 255, 255);
+      doc.setDrawColor(tr,tg,tb); doc.setLineWidth(1); doc.setFillColor(255,255,255);
       doc.roundedRect(cx, cy, cw, ch, 4, 4, "S");
-      doc.setFillColor(tr, tg, tb);
-      doc.roundedRect(cx, cy, cw, 16, 4, 4, "F");
-      doc.setFillColor(tr, tg, tb);
-      doc.rect(cx, cy + 8, cw, 8, "F");
-      doc.setTextColor(255, 255, 255);
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(9);
-      doc.text(c.label, cx + cw / 2, cy + 11, { align: "center" });
-      doc.setTextColor(20);
-      doc.setFontSize(14);
-      doc.text(c.val, cx + cw / 2, cy + 40, { align: "center" });
+      doc.setFillColor(tr,tg,tb); doc.roundedRect(cx, cy, cw, 16, 4, 4, "F");
+      doc.rect(cx, cy+8, cw, 8, "F");
+      doc.setTextColor(255,255,255); doc.setFont("helvetica","bold"); doc.setFontSize(9);
+      doc.text(c.label, cx+cw/2, cy+11, { align: "center" });
+      doc.setTextColor(20); doc.setFontSize(14); doc.text(c.val, cx+cw/2, cy+40, { align: "center" });
       cx += cw + gap;
     });
-
-    // Footer teal bar
     const fy = pageH - 60;
-    doc.setFillColor(tr, tg, tb);
-    doc.roundedRect(M, fy, pageW - M * 2, 46, 6, 6, "F");
-    doc.setTextColor(255, 255, 255);
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(9);
-    doc.text(meta.address, pageW / 2, fy + 14, { align: "center" });
+    doc.setFillColor(tr,tg,tb); doc.roundedRect(M, fy, pageW-M*2, 46, 6, 6, "F");
+    doc.setTextColor(255,255,255); doc.setFont("helvetica","normal"); doc.setFontSize(9);
+    doc.text(meta.address, pageW/2, fy+14, { align: "center" });
     doc.setFontSize(8);
-    doc.text(`tel: ${meta.phone}`, pageW / 2, fy + 27, { align: "center" });
-    doc.text(`E-MAIL: ${meta.email}`, pageW / 2, fy + 40, { align: "center" });
-
+    doc.text(`tel: ${meta.phone}`, pageW/2, fy+27, { align: "center" });
+    doc.text(`E-MAIL: ${meta.email}`, pageW/2, fy+40, { align: "center" });
     doc.save(`${meta.title || "proforma"}-${meta.customer || "customer"}.pdf`);
-    toast.success("تم تصدير PDF");
+    toast.success("PDF ✓");
   };
 
-  /* ================= PPTX EXPORT ================= */
   const exportPPTX = async () => {
-    const pptx = new PptxGenJS();
-    pptx.layout = "LAYOUT_WIDE";
-    pptx.title = meta.title;
-    const accent = themeColor;
-    const perSlide = 7;
+    const pptx = new PptxGenJS(); pptx.layout = "LAYOUT_WIDE"; pptx.title = meta.title;
+    const ac = themeColor; const perSlide = 7;
     const pages = Math.max(1, Math.ceil(rows.length / perSlide));
-
     for (let p = 0; p < pages; p++) {
-      const slide = pptx.addSlide();
-      slide.background = { color: "FFFFFF" };
-
-      // Teal banner
-      slide.addShape("roundRect", { x: 0.3, y: 0.25, w: 12.73, h: 1.2, fill: { color: accent }, line: { color: accent }, rectRadius: 0.08 });
-      slide.addShape("roundRect", { x: 0.45, y: 0.4, w: 0.9, h: 0.9, fill: { color: "FFFFFF" }, line: { color: "FFFFFF" }, rectRadius: 0.05 });
-      if (meta.logo) {
-        try { slide.addImage({ data: meta.logo, x: 0.5, y: 0.45, w: 0.8, h: 0.8 }); } catch {}
-      } else {
-        slide.addText(meta.company, { x: 0.45, y: 0.4, w: 0.9, h: 0.9, fontSize: 7, bold: true, color: accent, align: "center", valign: "middle" });
-      }
-      slide.addText("proforma", { x: 8, y: 0.55, w: 4.6, h: 0.8, fontSize: 40, bold: true, color: "FFFFFF", align: "right", fontFace: "Calibri" });
-
-      // Customer / date
-      slide.addText("CUSTOMER", { x: 0.4, y: 1.55, w: 3, h: 0.2, fontSize: 8, color: "888888" });
-      slide.addText("DATE", { x: 9.6, y: 1.55, w: 3, h: 0.2, fontSize: 8, color: "888888", align: "right" });
-      slide.addText(meta.customer || "—", { x: 0.4, y: 1.72, w: 6, h: 0.3, fontSize: 14, bold: true, color: "222222" });
-      slide.addText(fmtDate(meta.date), { x: 7, y: 1.72, w: 5.6, h: 0.3, fontSize: 14, bold: true, color: "222222", align: "right" });
-      slide.addShape("line", { x: 0.4, y: 2.05, w: 5.8, h: 0, line: { color: accent, width: 1 } });
-      slide.addShape("line", { x: 6.8, y: 2.05, w: 5.8, h: 0, line: { color: accent, width: 1 } });
-
-      // Table
-      const colW = [0.35, 1.1, 1.4, 0.9, 0.9, 0.55, 0.65, 0.65, 0.6, 0.8, 0.85, 0.55, 0.65, 0.6, 0.7];
+      const s = pptx.addSlide(); s.background = { color: "FFFFFF" };
+      s.addShape("roundRect", { x: 0.3, y: 0.25, w: 12.73, h: 1.2, fill: { color: ac }, line: { color: ac }, rectRadius: 0.08 });
+      s.addShape("roundRect", { x: 0.45, y: 0.4, w: 0.9, h: 0.9, fill: { color: "FFFFFF" }, line: { color: "FFFFFF" }, rectRadius: 0.05 });
+      if (meta.logo) { try { s.addImage({ data: meta.logo, x: 0.5, y: 0.45, w: 0.8, h: 0.8 }); } catch {} }
+      s.addText("proforma", { x: 8, y: 0.55, w: 4.6, h: 0.8, fontSize: 40, bold: true, color: "FFFFFF", align: "right" });
+      s.addText("CUSTOMER", { x: 0.4, y: 1.55, w: 3, h: 0.2, fontSize: 8, color: "888888" });
+      s.addText("DATE", { x: 9.6, y: 1.55, w: 3, h: 0.2, fontSize: 8, color: "888888", align: "right" });
+      s.addText(meta.customer || "—", { x: 0.4, y: 1.72, w: 6, h: 0.3, fontSize: 14, bold: true, color: "222222" });
+      s.addText(fmtDate(meta.date), { x: 7, y: 1.72, w: 5.6, h: 0.3, fontSize: 14, bold: true, color: "222222", align: "right" });
+      const colW = [0.35,1.1,1.4,0.9,0.9,0.55,0.65,0.65,0.6,0.8,0.85,0.55,0.65,0.6,0.7];
       const head = ["No","Item Name","Description","Image","Packing","Ctn","Doz/Ctn","Set/Ctn","Pcs/Set","Price/Ctn","T.Amount","CBM","T.CBM","Weight","T.Weight"];
-      const headerRow = head.map((h) => ({ text: h, options: { bold: true, color: "FFFFFF", fill: { color: accent }, align: "center", valign: "middle", fontSize: 9 } }));
-
-      const slice = rows.slice(p * perSlide, (p + 1) * perSlide);
-      const tableRows: PptxGenJS.TableRow[] = [headerRow as unknown as PptxGenJS.TableRow];
+      const headerRow = head.map((h) => ({ text: h, options: { bold: true, color: "FFFFFF", fill: { color: ac }, align: "center", valign: "middle", fontSize: 9 } }));
+      const slice = rows.slice(p*perSlide, (p+1)*perSlide);
+      const tr: PptxGenJS.TableRow[] = [headerRow as unknown as PptxGenJS.TableRow];
       slice.forEach((r, idx) => {
-        const gi = p * perSlide + idx + 1;
-        tableRows.push([
+        const gi = p*perSlide + idx + 1;
+        tr.push([
           { text: String(gi), options: { align: "center", valign: "middle" } },
           { text: r.itemName, options: { valign: "middle" } },
           { text: r.description, options: { valign: "middle" } },
           { text: "" }, { text: "" },
-          { text: r.ctn, options: { align: "center", valign: "middle" } },
-          { text: r.dozCtn, options: { align: "center", valign: "middle" } },
-          { text: r.setCtn, options: { align: "center", valign: "middle" } },
-          { text: r.pcsSet, options: { align: "center", valign: "middle" } },
-          { text: r.pricePerCtn, options: { align: "center", valign: "middle" } },
-          { text: String(amount(r) || ""), options: { align: "center", bold: true, valign: "middle" } },
-          { text: r.cbm, options: { align: "center", valign: "middle" } },
-          { text: String(tCbm(r) || ""), options: { align: "center", valign: "middle" } },
-          { text: r.weight, options: { align: "center", valign: "middle" } },
-          { text: String(tWeight(r) || ""), options: { align: "center", valign: "middle" } },
+          { text: r.ctn, options: { align: "center" } }, { text: r.dozCtn, options: { align: "center" } },
+          { text: r.setCtn, options: { align: "center" } }, { text: r.pcsSet, options: { align: "center" } },
+          { text: r.pricePerCtn, options: { align: "center" } },
+          { text: String(amount(r) || ""), options: { align: "center", bold: true } },
+          { text: r.cbm, options: { align: "center" } }, { text: String(tCbm(r) || ""), options: { align: "center" } },
+          { text: r.weight, options: { align: "center" } }, { text: String(tWeight(r) || ""), options: { align: "center" } },
         ] as unknown as PptxGenJS.TableRow);
       });
-
-      const tableY = 2.25;
-      const rowH = 0.7;
-      slide.addTable(tableRows, {
-        x: 0.3, y: tableY, w: 12.73, rowH, fontSize: 8.5,
-        border: { type: "solid", pt: 0.5, color: "E5E7EB" }, valign: "middle", colW,
-      });
-
-      const overlay = (offsetCols: number, src: string, rowIdx: number) => {
-        if (!src) return;
-        let x = 0.3;
-        for (let i = 0; i < offsetCols; i++) x += colW[i];
-        const colWidth = colW[offsetCols];
-        const y = tableY + rowH + rowIdx * rowH + 0.04;
-        const size = rowH - 0.1;
-        const cx = x + (colWidth - size) / 2;
-        try { slide.addImage({ data: src, x: cx, y, w: size, h: size }); } catch {}
+      const tY = 2.25; const rowH = 0.7;
+      s.addTable(tr, { x: 0.3, y: tY, w: 12.73, rowH, fontSize: 8.5, border: { type: "solid", pt: 0.5, color: "E5E7EB" }, valign: "middle", colW });
+      const overlay = (oc: number, src: string, ri: number) => {
+        if (!src) return; let x = 0.3; for (let i = 0; i < oc; i++) x += colW[i];
+        const cw = colW[oc]; const y = tY + rowH + ri*rowH + 0.04; const size = rowH - 0.1;
+        const cx = x + (cw-size)/2; try { s.addImage({ data: src, x: cx, y, w: size, h: size }); } catch {}
       };
       slice.forEach((r, idx) => { overlay(3, r.image, idx); overlay(4, r.packing, idx); });
-
-      // Last slide: totals + notes + footer
-      if (p === pages - 1) {
-        const cardsY = tableY + rowH + slice.length * rowH + 0.25;
-        slide.addText(`• ${meta.notes}`, { x: 0.3, y: cardsY - 0.05, w: 12.73, h: 0.3, fontSize: 11, bold: true, color: "222222", align: "right" });
+      if (p === pages-1) {
+        const cY = tY + rowH + slice.length*rowH + 0.25;
+        s.addText(`• ${meta.notes}`, { x: 0.3, y: cY-0.05, w: 12.73, h: 0.3, fontSize: 11, bold: true, color: "222222", align: "right" });
         const cards = [
-          { l: "T.Ctn", v: String(totals.tCtn) },
-          { l: "T.CBM", v: totals.tCBM.toFixed(2) },
-          { l: "T.Weight", v: totals.tWt.toFixed(2) },
-          { l: "T.Amount", v: String(totals.tAmount) },
+          { l: "T.Ctn", v: String(totals.tCtn) }, { l: "T.CBM", v: totals.tCBM.toFixed(2) },
+          { l: "T.Weight", v: totals.tWt.toFixed(2) }, { l: "T.Amount", v: String(totals.tAmount) },
         ];
-        const cw = 2.0, ch = 0.95, gap = 0.15;
-        let cx = 13.03 - (cw * 4 + gap * 3);
+        const cw = 2.0, ch = 0.95, gap = 0.15; let cx = 13.03 - (cw*4 + gap*3);
         cards.forEach((c) => {
-          slide.addShape("roundRect", { x: cx, y: cardsY + 0.25, w: cw, h: ch, fill: { color: "FFFFFF" }, line: { color: accent, width: 1 }, rectRadius: 0.05 });
-          slide.addShape("rect", { x: cx + 0.02, y: cardsY + 0.27, w: cw - 0.04, h: 0.28, fill: { color: accent }, line: { color: accent } });
-          slide.addText(c.l, { x: cx, y: cardsY + 0.27, w: cw, h: 0.28, fontSize: 10, bold: true, color: "FFFFFF", align: "center", valign: "middle" });
-          slide.addText(c.v, { x: cx, y: cardsY + 0.55, w: cw, h: 0.6, fontSize: 18, bold: true, color: "222222", align: "center", valign: "middle" });
+          s.addShape("roundRect", { x: cx, y: cY+0.25, w: cw, h: ch, fill: { color: "FFFFFF" }, line: { color: ac, width: 1 }, rectRadius: 0.05 });
+          s.addShape("rect", { x: cx+0.02, y: cY+0.27, w: cw-0.04, h: 0.28, fill: { color: ac }, line: { color: ac } });
+          s.addText(c.l, { x: cx, y: cY+0.27, w: cw, h: 0.28, fontSize: 10, bold: true, color: "FFFFFF", align: "center", valign: "middle" });
+          s.addText(c.v, { x: cx, y: cY+0.55, w: cw, h: 0.6, fontSize: 18, bold: true, color: "222222", align: "center", valign: "middle" });
           cx += cw + gap;
         });
       }
-
-      // Footer teal bar
-      slide.addShape("roundRect", { x: 0.3, y: 6.8, w: 12.73, h: 0.65, fill: { color: accent }, line: { color: accent }, rectRadius: 0.08 });
-      slide.addText(meta.address, { x: 0.4, y: 6.82, w: 12.5, h: 0.22, fontSize: 9, color: "FFFFFF", align: "center" });
-      slide.addText(`tel: ${meta.phone}`, { x: 0.4, y: 7.02, w: 12.5, h: 0.18, fontSize: 8, color: "FFFFFF", align: "center" });
-      slide.addText(`E-MAIL: ${meta.email}`, { x: 0.4, y: 7.2, w: 12.5, h: 0.18, fontSize: 8, color: "FFFFFF", align: "center" });
+      s.addShape("roundRect", { x: 0.3, y: 6.8, w: 12.73, h: 0.65, fill: { color: ac }, line: { color: ac }, rectRadius: 0.08 });
+      s.addText(meta.address, { x: 0.4, y: 6.82, w: 12.5, h: 0.22, fontSize: 9, color: "FFFFFF", align: "center" });
+      s.addText(`tel: ${meta.phone}`, { x: 0.4, y: 7.02, w: 12.5, h: 0.18, fontSize: 8, color: "FFFFFF", align: "center" });
+      s.addText(`E-MAIL: ${meta.email}`, { x: 0.4, y: 7.2, w: 12.5, h: 0.18, fontSize: 8, color: "FFFFFF", align: "center" });
     }
-
     await pptx.writeFile({ fileName: `${meta.title || "proforma"}-${meta.customer || "customer"}.pptx` });
-    toast.success("تم تصدير PowerPoint");
+    toast.success("PPTX ✓");
   };
 
-  const onPrint = () => window.print();
+  const onPrint = async () => { await flushSave(); setTimeout(() => window.print(), 200); };
+  const onSaveNow = async () => { await flushSave(); toast.success(lang === "ar" ? "تم الحفظ" : "Saved"); };
 
-  const themeStyle: CSSProperties = { ["--accent" as never]: `#${themeColor}` };
-  const accent = `#${themeColor}`;
+  const themeStyle: CSSProperties = { ["--accent" as never]: accent };
+  const dir = lang === "ar" ? "rtl" : "ltr";
+
+  if (!loaded || !active) {
+    return <div className="flex min-h-screen items-center justify-center text-sm text-muted-foreground">Loading…</div>;
+  }
 
   return (
-    <div className="min-h-screen bg-[#f4f6f5] print:bg-white" style={themeStyle}>
-      {/* Top toolbar */}
+    <div className="min-h-screen bg-[#f4f6f5] print:bg-white" style={themeStyle} dir={dir}>
+      {/* TOOLBAR */}
       <header className="sticky top-0 z-20 border-b bg-white/95 backdrop-blur print:hidden">
-        <div className="mx-auto flex max-w-[1400px] flex-wrap items-center justify-between gap-3 px-6 py-3">
-          <div>
-            <h1 className="text-xl font-bold leading-tight">Proforma Invoice</h1>
-            <p className="text-[11px] uppercase tracking-wider text-muted-foreground">{meta.company}</p>
+        <div className="mx-auto flex max-w-[1400px] flex-wrap items-center justify-between gap-3 px-4 py-3">
+          <div className="flex items-center gap-3">
+            <div>
+              <h1 className="text-lg font-bold leading-tight">{meta.title}</h1>
+              <p className="text-[11px] uppercase tracking-wider text-muted-foreground">{meta.company}</p>
+            </div>
+            <span className="rounded-full px-2 py-0.5 text-[11px]" style={{ background: `${accent}22`, color: accent }}>
+              {saveState === "saving" ? t.saving : saveState === "saved" ? t.saved : <span className="flex items-center gap-1"><Cloud className="h-3 w-3" /> {lang === "ar" ? "مزامنة فورية" : "Live sync"}</span>}
+            </span>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <Button size="sm" variant="outline" onClick={onPrint}>
-              <Printer className="mr-1 h-4 w-4" /> Print
+            <Button size="sm" variant="outline" onClick={() => setLang((l) => (l === "ar" ? "en" : "ar"))} title="Language">
+              <Languages className="mr-1 h-4 w-4" /> {t.lang}
             </Button>
-            <Button size="sm" onClick={exportPDF} className="bg-sky-600 text-white hover:bg-sky-700">
-              <FileDown className="mr-1 h-4 w-4" /> PDF (Landscape)
-            </Button>
-            <Button size="sm" onClick={exportPPTX} className="bg-orange-500 text-white hover:bg-orange-600">
-              <Presentation className="mr-1 h-4 w-4" /> PowerPoint
-            </Button>
-            <Button size="sm" onClick={createProforma} className="bg-purple-600 text-white hover:bg-purple-700">
-              <FilePlus className="mr-1 h-4 w-4" /> New Invoice
-            </Button>
-            <Button size="sm" onClick={addRow} className="text-white hover:opacity-90" style={{ background: accent }}>
-              <Plus className="mr-1 h-4 w-4" /> Add Item
-            </Button>
-            <Button size="sm" variant="outline" onClick={() => setShowLibrary(true)}>
-              <Library className="mr-1 h-4 w-4" /> Library
-            </Button>
+            <Button size="sm" variant="outline" onClick={onSaveNow}><Save className="mr-1 h-4 w-4" /> {t.save}</Button>
+            <Button size="sm" variant="outline" onClick={onPrint}><Printer className="mr-1 h-4 w-4" /> {t.print}</Button>
+            <Button size="sm" onClick={exportPDF} className="bg-sky-600 text-white hover:bg-sky-700"><FileDown className="mr-1 h-4 w-4" /> {t.pdf}</Button>
+            <Button size="sm" onClick={exportPPTX} className="bg-orange-500 text-white hover:bg-orange-600"><Presentation className="mr-1 h-4 w-4" /> {t.pptx}</Button>
+            <Button size="sm" onClick={createProforma} className="bg-purple-600 text-white hover:bg-purple-700"><FilePlus className="mr-1 h-4 w-4" /> {t.newInvoice}</Button>
+            <Button size="sm" onClick={addRow} className="text-white hover:opacity-90" style={{ background: accent }}><Plus className="mr-1 h-4 w-4" /> {t.addItem}</Button>
+            <Button size="sm" variant="outline" onClick={() => setShowLibrary(true)}><Library className="mr-1 h-4 w-4" /> {t.library}</Button>
             <div className="relative">
-              <Button size="sm" variant="outline" onClick={() => setShowThemes((v) => !v)}>
-                <Palette className="mr-1 h-4 w-4" /> Theme
-              </Button>
+              <Button size="sm" variant="outline" onClick={() => setShowThemes((v) => !v)}><Palette className="mr-1 h-4 w-4" /> {t.theme}</Button>
               {showThemes && (
-                <div className="absolute right-0 z-30 mt-2 w-56 rounded-md border bg-white p-3 shadow-lg">
+                <div className="absolute end-0 z-30 mt-2 w-56 rounded-md border bg-white p-3 shadow-lg">
                   <div className="mb-2 grid grid-cols-3 gap-2">
-                    {THEME_PRESETS.map((t) => (
-                      <button
-                        key={t.color}
-                        onClick={() => { setThemeColor(t.color); setShowThemes(false); }}
-                        className="h-9 rounded-md border transition hover:scale-105"
-                        style={{ background: `#${t.color}` }}
-                        title={t.name}
-                      />
+                    {THEME_PRESETS.map((tp) => (
+                      <button key={tp.color} onClick={() => { setThemeColor(tp.color); setShowThemes(false); }} className="h-9 rounded-md border transition hover:scale-105" style={{ background: `#${tp.color}` }} title={tp.name} />
                     ))}
                   </div>
-                  <input
-                    type="color"
-                    value={`#${themeColor}`}
-                    onChange={(e) => setThemeColor(e.target.value)}
-                    className="h-9 w-full cursor-pointer rounded-md border"
-                  />
+                  <input type="color" value={`#${themeColor}`} onChange={(e) => setThemeColor(e.target.value)} className="h-9 w-full cursor-pointer rounded-md border" />
                 </div>
               )}
             </div>
           </div>
         </div>
-
-        {/* Proforma tabs */}
-        <div className="mx-auto flex max-w-[1400px] items-center gap-2 overflow-x-auto px-6 pb-3">
+        <div className="mx-auto flex max-w-[1400px] items-center gap-2 overflow-x-auto px-4 pb-3">
           {proformas.map((p) => {
-            const isActive = p.id === active?.id;
+            const isActive = p.id === active.id;
             return (
-              <div
-                key={p.id}
-                className={`flex shrink-0 items-center gap-1 rounded-md px-3 py-1.5 text-sm transition ${
-                  isActive ? "text-white shadow" : "border bg-white hover:bg-muted"
-                }`}
-                style={isActive ? { background: accent } : undefined}
-              >
-                <button onClick={() => setActiveId(p.id)} className="font-medium">
-                  {p.name} ({p.rows.length})
-                </button>
-                <button
-                  onClick={() => {
-                    const n = prompt("اسم البروفورما / Proforma name", p.name);
-                    if (n) setProformas((ps) => ps.map((x) => (x.id === p.id ? { ...x, name: n } : x)));
-                  }}
-                  className="ml-1 text-[10px] opacity-70 hover:opacity-100"
-                  title="Rename"
-                >
-                  ✎
-                </button>
-                <button onClick={() => deleteProforma(p.id)} className="ml-0.5 opacity-60 hover:text-red-200" title="Delete">
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
+              <div key={p.id} className={`flex shrink-0 items-center gap-1 rounded-md px-3 py-1.5 text-sm transition ${isActive ? "text-white shadow" : "border bg-white hover:bg-muted"}`} style={isActive ? { background: accent } : undefined}>
+                <button onClick={() => setActiveId(p.id)} className="font-medium">{p.name} ({p.rows.length})</button>
+                <button onClick={() => renameProforma(p.id)} className="ms-1 text-[10px] opacity-70 hover:opacity-100" title={t.rename}>✎</button>
+                <button onClick={() => deleteProforma(p.id)} className="ms-0.5 opacity-60 hover:text-red-200" title={t.delete}><Trash2 className="h-3.5 w-3.5" /></button>
               </div>
             );
           })}
         </div>
       </header>
 
-      {/* SHEET (looks exactly like the export) */}
+      {/* SHEET */}
       <main className="mx-auto max-w-[1400px] px-4 py-6 print:max-w-none print:p-0">
-        <div className="overflow-hidden rounded-lg bg-white shadow-sm print:rounded-none print:shadow-none">
-          {/* Teal banner */}
+        <div id="printable" className="overflow-hidden rounded-lg bg-white shadow-sm print:rounded-none print:shadow-none">
+          {/* Banner */}
           <div className="relative flex items-center justify-between px-6 py-5" style={{ background: accent }}>
-            <button
-              type="button"
-              onClick={() => logoRef.current?.click()}
-              className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-md bg-white text-[10px] font-bold uppercase leading-tight text-foreground shadow"
-              style={{ color: accent }}
-              title="Upload logo"
-            >
-              {meta.logo ? (
-                <img src={meta.logo} alt="logo" className="h-full w-full object-contain p-1" />
-              ) : (
-                <span className="px-1 text-center">{meta.company.split(" ").slice(0, 2).join(" ")}</span>
-              )}
+            <button type="button" onClick={() => logoRef.current?.click()} className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-md bg-white text-[10px] font-bold uppercase leading-tight shadow" style={{ color: accent }} title="Upload logo">
+              {meta.logo ? <img src={meta.logo} alt="logo" className="h-full w-full object-contain p-1" /> : <span className="px-1 text-center">{meta.company.split(" ").slice(0,2).join(" ")}</span>}
             </button>
             <input ref={logoRef} type="file" accept="image/*" className="hidden" onChange={(e) => onLogo(e.target.files?.[0] ?? null)} />
-            <h2 className="text-5xl font-extrabold lowercase tracking-tight text-white">proforma</h2>
+            <h2 className="text-5xl font-extrabold lowercase tracking-tight text-white">{t.proforma}</h2>
           </div>
-
           {/* Customer / Date */}
           <div className="grid grid-cols-2 gap-8 border-b px-6 pt-5 pb-3">
             <div>
-              <div className="text-[11px] tracking-wider text-muted-foreground">CUSTOMER</div>
-              <Input
-                value={meta.customer}
-                onChange={(e) => setMeta({ ...meta, customer: e.target.value })}
-                className="border-0 border-b-2 bg-transparent px-0 text-base font-bold uppercase shadow-none focus-visible:ring-0"
-                style={{ borderColor: accent }}
-                placeholder="Customer name"
-              />
+              <div className="text-[11px] tracking-wider text-muted-foreground">{t.customer}</div>
+              <Input value={meta.customer} onChange={(e) => setMeta({ ...meta, customer: e.target.value })} className="border-0 border-b-2 bg-transparent px-0 text-base font-bold uppercase shadow-none focus-visible:ring-0" style={{ borderColor: accent }} placeholder={t.customer} />
             </div>
-            <div className="text-right">
-              <div className="text-[11px] tracking-wider text-muted-foreground">DATE</div>
-              <Input
-                type="date"
-                value={meta.date}
-                onChange={(e) => setMeta({ ...meta, date: e.target.value })}
-                className="border-0 border-b-2 bg-transparent px-0 text-right text-base font-bold shadow-none focus-visible:ring-0"
-                style={{ borderColor: accent }}
-              />
+            <div className="text-end">
+              <div className="text-[11px] tracking-wider text-muted-foreground">{t.date}</div>
+              <Input type="date" value={meta.date} onChange={(e) => setMeta({ ...meta, date: e.target.value })} className="border-0 border-b-2 bg-transparent px-0 text-end text-base font-bold shadow-none focus-visible:ring-0" style={{ borderColor: accent }} />
             </div>
           </div>
-
           {/* TABLE */}
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1300px] border-collapse text-[12px]">
+            <table className="w-full min-w-[1300px] border-collapse text-[12px]" dir="ltr">
               <thead>
                 <tr className="text-left" style={{ background: `${accent}15`, color: accent }}>
-                  {["No","Item Name","Description","Image","Packing","Ctn","Doz/Ctn","Set/Ctn","Pcs/Set","Price/Ctn","T.Amount","CBM","T.CBM","Weight","T.Weight","Actions"].map((h) => (
-                    <th key={h} className="px-2 py-2.5 text-xs font-semibold uppercase">{h}</th>
-                  ))}
+                  {t.cols.map((h) => (<th key={h} className="px-2 py-2.5 text-xs font-semibold uppercase">{h}</th>))}
                 </tr>
               </thead>
               <tbody>
                 {rows.map((r, i) => (
-                  <RowEditor
-                    key={r.id}
-                    index={i + 1}
-                    row={r}
-                    accent={accent}
+                  <RowEditor key={r.id} index={i+1} row={r} accent={accent} lang={lang}
                     onChange={(p) => updateRow(r.id, p)}
                     onImage={(f) => onImage(r.id, f, "image")}
                     onPacking={(f) => onImage(r.id, f, "packing")}
                     onDuplicate={() => duplicateRow(r.id)}
                     onRemove={() => removeRow(r.id)}
+                    onSend={() => setSendItem(r)}
                   />
                 ))}
               </tbody>
             </table>
           </div>
-
           {/* Notes + Totals */}
-          <div className="px-6 pt-3">
-            <div className="text-right text-[13px] font-semibold">• {meta.notes}</div>
-          </div>
+          <div className="px-6 pt-3"><div className="text-end text-[13px] font-semibold">• {meta.notes}</div></div>
           <div className="flex flex-wrap justify-end gap-3 px-6 py-4">
             {[
-              { l: "T.Ctn", v: totals.tCtn },
-              { l: "T.CBM", v: totals.tCBM.toFixed(2) },
-              { l: "T.Weight", v: totals.tWt.toFixed(2) },
-              { l: "T.Amount", v: totals.tAmount },
+              { l: t.totals.ctn, v: totals.tCtn },
+              { l: t.totals.cbm, v: totals.tCBM.toFixed(2) },
+              { l: t.totals.weight, v: totals.tWt.toFixed(2) },
+              { l: t.totals.amount, v: totals.tAmount },
             ].map((c) => (
               <div key={c.l} className="min-w-[160px] overflow-hidden rounded-md border" style={{ borderColor: accent }}>
                 <div className="px-3 py-1.5 text-center text-xs font-bold uppercase text-white" style={{ background: accent }}>{c.l}</div>
@@ -728,87 +553,68 @@ export default function ProformaApp() {
               </div>
             ))}
           </div>
-
-          {/* Footer teal bar */}
+          {/* Footer */}
           <div className="px-6 pt-3 pb-1 text-center text-white" style={{ background: accent }}>
-            <Input
-              value={meta.address}
-              onChange={(e) => setMeta({ ...meta, address: e.target.value })}
-              className="mx-auto h-7 max-w-3xl border-0 bg-transparent text-center text-[12px] font-medium text-white placeholder:text-white/70 shadow-none focus-visible:ring-0"
-            />
-            <Input
-              value={meta.phone}
-              onChange={(e) => setMeta({ ...meta, phone: e.target.value })}
-              className="mx-auto h-7 max-w-md border-0 bg-transparent text-center text-[11px] text-white shadow-none focus-visible:ring-0"
-            />
-            <Input
-              value={meta.email}
-              onChange={(e) => setMeta({ ...meta, email: e.target.value })}
-              className="mx-auto h-7 max-w-xl border-0 bg-transparent text-center text-[11px] text-white shadow-none focus-visible:ring-0"
-            />
+            <Input value={meta.address} onChange={(e) => setMeta({ ...meta, address: e.target.value })} className="mx-auto h-7 max-w-3xl border-0 bg-transparent text-center text-[12px] font-medium text-white placeholder:text-white/70 shadow-none focus-visible:ring-0" />
+            <Input value={meta.phone} onChange={(e) => setMeta({ ...meta, phone: e.target.value })} className="mx-auto h-7 max-w-md border-0 bg-transparent text-center text-[11px] text-white shadow-none focus-visible:ring-0" />
+            <Input value={meta.email} onChange={(e) => setMeta({ ...meta, email: e.target.value })} className="mx-auto h-7 max-w-xl border-0 bg-transparent text-center text-[11px] text-white shadow-none focus-visible:ring-0" />
           </div>
         </div>
-
-        <p className="mt-4 text-center text-xs text-muted-foreground print:hidden">
-          يتم الحفظ تلقائياً في المتصفح • Multiple proformas supported
-        </p>
+        <p className="mt-4 text-center text-xs text-muted-foreground print:hidden">{t.arabicTip}</p>
       </main>
 
-      {showLibrary && (
-        <LibraryModal
-          items={library}
-          accent={accent}
-          onPick={copyFromLibrary}
-          onClose={() => setShowLibrary(false)}
+      {showLibrary && <LibraryModal items={library} accent={accent} lang={lang} onPick={(r) => { copyFromLibrary(r); }} onClose={() => setShowLibrary(false)} />}
+      {sendItem && (
+        <SendToModal
+          item={sendItem} accent={accent} lang={lang}
+          targets={proformas.filter((p) => p.id !== active.id)}
+          onCancel={() => setSendItem(null)}
+          onSend={async (ids) => { await sendRowToProformas(sendItem, ids); setSendItem(null); }}
         />
       )}
+
+      {/* PRINT CSS */}
+      <style>{`
+        @page { size: A4 landscape; margin: 8mm; }
+        @media print {
+          body { background: white !important; }
+          .print\\:hidden { display: none !important; }
+          #printable { box-shadow: none !important; border-radius: 0 !important; }
+          #printable, #printable * {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+            color-adjust: exact !important;
+          }
+          input, table { border-color: #e5e7eb !important; }
+          input { background: transparent !important; }
+        }
+      `}</style>
     </div>
   );
 }
 
-function CellInput({
-  value, onChange, type = "text", align = "center",
-}: { value: string; onChange: (v: string) => void; type?: string; align?: "left" | "center" | "right" }) {
-  return (
-    <input
-      type={type}
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      className="w-full bg-transparent px-1 py-1 text-[12px] outline-none focus:bg-muted/40"
-      style={{ textAlign: align }}
-    />
-  );
-}
+/* ───────────────────────────  PIECES  ─────────────────────────── */
 
-function ImgCell({ src, onPick, icon }: { src: string; onPick: (f: File | null) => void; icon: "img" | "pkg" }) {
+function CellInput({ value, onChange, type = "text", align = "center" }: { value: string; onChange: (v: string) => void; type?: string; align?: "left"|"center"|"right" }) {
+  return <input type={type} value={value} onChange={(e) => onChange(e.target.value)} className="w-full bg-transparent px-1 py-1 text-[12px] outline-none focus:bg-muted/40" style={{ textAlign: align }} />;
+}
+function ImgCell({ src, onPick, icon }: { src: string; onPick: (f: File | null) => void; icon: "img"|"pkg" }) {
   const ref = useRef<HTMLInputElement>(null);
   return (
     <>
-      <button
-        type="button"
-        onClick={() => ref.current?.click()}
-        className="mx-auto flex h-14 w-14 items-center justify-center overflow-hidden rounded border border-dashed bg-muted/30 hover:border-foreground"
-      >
+      <button type="button" onClick={() => ref.current?.click()} className="mx-auto flex h-14 w-14 items-center justify-center overflow-hidden rounded border border-dashed bg-muted/30 hover:border-foreground">
         {src ? <img src={src} alt="" className="h-full w-full object-cover" /> : icon === "img" ? <ImageIcon className="h-4 w-4 text-muted-foreground" /> : <Package className="h-4 w-4 text-muted-foreground" />}
       </button>
       <input ref={ref} type="file" accept="image/*" className="hidden" onChange={(e) => onPick(e.target.files?.[0] ?? null)} />
     </>
   );
 }
-
-function RowEditor({
-  index, row, accent, onChange, onImage, onPacking, onDuplicate, onRemove,
-}: {
-  index: number; row: Row; accent: string;
-  onChange: (p: Partial<Row>) => void;
-  onImage: (f: File | null) => void;
-  onPacking: (f: File | null) => void;
-  onDuplicate: () => void;
-  onRemove: () => void;
-}) {
-  const amt = amount(row);
-  const tc = tCbm(row);
-  const tw = tWeight(row);
+function RowEditor({ index, row, accent, lang, onChange, onImage, onPacking, onDuplicate, onRemove, onSend }:
+  { index: number; row: Row; accent: string; lang: Lang;
+    onChange: (p: Partial<Row>) => void; onImage: (f: File | null) => void; onPacking: (f: File | null) => void;
+    onDuplicate: () => void; onRemove: () => void; onSend: () => void; }) {
+  const amt = amount(row); const tc = tCbm(row); const tw = tWeight(row);
+  const tt = T[lang];
   return (
     <tr className="border-b align-middle hover:bg-muted/20">
       <td className="w-10 px-2 text-center text-xs font-semibold text-muted-foreground">{index}</td>
@@ -826,71 +632,90 @@ function RowEditor({
       <td className="w-14 px-1 text-center text-[12px] font-semibold">{tc || ""}</td>
       <td className="w-14 px-1"><CellInput value={row.weight} onChange={(v) => onChange({ weight: v })} type="number" /></td>
       <td className="w-14 px-1 text-center text-[12px] font-semibold">{tw || ""}</td>
-      <td className="w-20 px-1">
+      <td className="w-24 px-1 print:hidden">
         <div className="flex justify-center gap-1">
-          <button onClick={onDuplicate} title="Duplicate" className="rounded p-1 hover:bg-muted">
-            <Copy className="h-3.5 w-3.5" />
-          </button>
-          <button onClick={onRemove} title="Delete" className="rounded p-1 text-destructive hover:bg-destructive/10">
-            <Trash2 className="h-3.5 w-3.5" />
-          </button>
+          <button onClick={onSend} title={tt.sendTo} className="rounded p-1 hover:bg-muted" style={{ color: accent }}><Send className="h-3.5 w-3.5" /></button>
+          <button onClick={onDuplicate} title={tt.duplicate} className="rounded p-1 hover:bg-muted"><Copy className="h-3.5 w-3.5" /></button>
+          <button onClick={onRemove} title={tt.delete} className="rounded p-1 text-destructive hover:bg-destructive/10"><Trash2 className="h-3.5 w-3.5" /></button>
         </div>
       </td>
     </tr>
   );
 }
-
-function LibraryModal({
-  items, accent, onPick, onClose,
-}: {
-  items: { row: Row; from: string }[];
-  accent: string;
-  onPick: (r: Row) => void;
-  onClose: () => void;
-}) {
-  const [q, setQ] = useState("");
-  const filtered = items.filter(
-    (i) => !q || i.row.itemName.toLowerCase().includes(q.toLowerCase()) || i.from.toLowerCase().includes(q.toLowerCase()),
-  );
+function LibraryModal({ items, accent, lang, onPick, onClose }:
+  { items: { row: Row; from: string }[]; accent: string; lang: Lang; onPick: (r: Row) => void; onClose: () => void; }) {
+  const [q, setQ] = useState(""); const tt = T[lang];
+  const filtered = items.filter((i) => !q || i.row.itemName.toLowerCase().includes(q.toLowerCase()) || i.from.toLowerCase().includes(q.toLowerCase()));
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
       <div className="max-h-[85vh] w-full max-w-4xl overflow-hidden rounded-lg bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between border-b px-5 py-3" style={{ background: `${accent}15` }}>
-          <h3 className="font-semibold">مكتبة المنتجات / Product Library ({items.length})</h3>
+          <h3 className="font-semibold">{tt.productLib} ({items.length})</h3>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground"><X className="h-5 w-5" /></button>
         </div>
-        <div className="border-b p-3">
-          <Input placeholder="بحث / Search…" value={q} onChange={(e) => setQ(e.target.value)} />
-        </div>
+        <div className="border-b p-3"><Input placeholder={tt.search} value={q} onChange={(e) => setQ(e.target.value)} /></div>
         <div className="max-h-[60vh] overflow-y-auto p-4">
-          {filtered.length === 0 ? (
-            <p className="py-10 text-center text-sm text-muted-foreground">لا توجد منتجات بعد / No products yet</p>
-          ) : (
+          {filtered.length === 0 ? <p className="py-10 text-center text-sm text-muted-foreground">{tt.noProducts}</p> : (
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
               {filtered.map((i, idx) => (
-                <button
-                  key={idx}
-                  onClick={() => onPick(i.row)}
-                  className="group flex flex-col overflow-hidden rounded-lg border bg-white text-left transition hover:shadow-md"
-                >
+                <button key={idx} onClick={() => onPick(i.row)} className="group flex flex-col overflow-hidden rounded-lg border bg-white text-left transition hover:shadow-md">
                   <div className="flex aspect-square items-center justify-center bg-muted/40">
-                    {i.row.image ? (
-                      <img src={i.row.image} alt="" className="h-full w-full object-cover" />
-                    ) : (
-                      <ImageIcon className="h-8 w-8 text-muted-foreground" />
-                    )}
+                    {i.row.image ? <img src={i.row.image} alt="" className="h-full w-full object-cover" /> : <ImageIcon className="h-8 w-8 text-muted-foreground" />}
                   </div>
                   <div className="p-2">
                     <div className="truncate text-sm font-medium">{i.row.itemName || "—"}</div>
-                    <div className="truncate text-[11px] text-muted-foreground">من {i.from} • {i.row.pricePerCtn || "0"} /ctn</div>
+                    <div className="truncate text-[11px] text-muted-foreground">{i.from} • {i.row.pricePerCtn || "0"}/ctn</div>
                   </div>
                 </button>
               ))}
             </div>
           )}
         </div>
-        <div className="border-t px-5 py-3 text-xs text-muted-foreground">
-          اضغط على أي منتج لإضافته للبروفورما الحالية / Click any item to add it to the current proforma
+        <div className="border-t px-5 py-3 text-xs text-muted-foreground">{tt.addFromLib}</div>
+      </div>
+    </div>
+  );
+}
+function SendToModal({ item, targets, accent, lang, onCancel, onSend }:
+  { item: Row; targets: Proforma[]; accent: string; lang: Lang; onCancel: () => void; onSend: (ids: string[]) => void; }) {
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const tt = T[lang];
+  const toggle = (id: string) => setPicked((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onCancel}>
+      <div className="w-full max-w-lg overflow-hidden rounded-lg bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between border-b px-5 py-3" style={{ background: `${accent}15` }}>
+          <div>
+            <h3 className="font-semibold">{tt.sendTo}</h3>
+            <p className="text-xs text-muted-foreground">{tt.pickTargets}</p>
+          </div>
+          <button onClick={onCancel} className="text-muted-foreground hover:text-foreground"><X className="h-5 w-5" /></button>
+        </div>
+        <div className="flex items-center gap-3 border-b p-4">
+          <div className="flex h-14 w-14 items-center justify-center overflow-hidden rounded border bg-muted/30">
+            {item.image ? <img src={item.image} alt="" className="h-full w-full object-cover" /> : <ImageIcon className="h-5 w-5 text-muted-foreground" />}
+          </div>
+          <div className="flex-1">
+            <div className="font-medium">{item.itemName || "—"}</div>
+            <div className="text-xs text-muted-foreground truncate">{item.description}</div>
+          </div>
+        </div>
+        <div className="max-h-[50vh] overflow-y-auto p-3">
+          {targets.length === 0 ? <p className="py-8 text-center text-sm text-muted-foreground">{lang === "ar" ? "مفيش بروفورمات تانية" : "No other proformas"}</p> :
+            targets.map((p) => (
+              <label key={p.id} className="flex cursor-pointer items-center gap-3 rounded p-2 hover:bg-muted/40">
+                <input type="checkbox" checked={picked.has(p.id)} onChange={() => toggle(p.id)} className="h-4 w-4" style={{ accentColor: accent }} />
+                <span className="flex-1 text-sm font-medium">{p.name}</span>
+                <span className="text-xs text-muted-foreground">{p.rows.length} {lang === "ar" ? "منتج" : "items"}</span>
+              </label>
+            ))
+          }
+        </div>
+        <div className="flex justify-end gap-2 border-t p-3">
+          <Button variant="outline" size="sm" onClick={onCancel}>{tt.cancel}</Button>
+          <Button size="sm" onClick={() => onSend([...picked])} disabled={picked.size === 0} style={{ background: accent }} className="text-white">
+            <Send className="me-1 h-4 w-4" /> {tt.sendNow} ({picked.size})
+          </Button>
         </div>
       </div>
     </div>
