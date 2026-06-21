@@ -7,8 +7,8 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import jsPDF from "jspdf";
-import autoTable from "jspdf-autotable";
 import PptxGenJS from "pptxgenjs";
+import html2canvas from "html2canvas-pro";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "@tanstack/react-router";
 
