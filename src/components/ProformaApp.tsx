@@ -3,13 +3,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   Plus, Trash2, FileDown, Presentation, Copy, Library, FilePlus, Palette, X,
-  Package, Printer, ImageIcon, Send, Save, Languages, Cloud,
+  Package, Printer, ImageIcon, Send, Save, Languages, LogOut,
 } from "lucide-react";
 import { toast } from "sonner";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import PptxGenJS from "pptxgenjs";
 import { supabase } from "@/integrations/supabase/client";
+import { useNavigate } from "@tanstack/react-router";
 
 type Row = {
   id: string; itemName: string; description: string; image: string; packing: string;
@@ -26,12 +27,6 @@ type Proforma = {
 type Lang = "ar" | "en";
 
 const LANG_KEY = "proforma-lang";
-const CLIENT_ID = (() => {
-  if (typeof window === "undefined") return "ssr";
-  let id = localStorage.getItem("pf-client-id");
-  if (!id) { id = crypto.randomUUID(); localStorage.setItem("pf-client-id", id); }
-  return id;
-})();
 
 const T = {
   ar: {
@@ -117,21 +112,22 @@ function hexRgb(hex: string): [number,number,number] {
 /* ───────────────────────────  COMPONENT  ─────────────────────────── */
 
 export default function ProformaApp() {
+  const navigate = useNavigate();
   const [proformas, setProformas] = useState<Proforma[]>([]);
   const [activeId, setActiveId] = useState<string>("");
   const [loaded, setLoaded] = useState(false);
   const [showLibrary, setShowLibrary] = useState(false);
   const [showThemes, setShowThemes] = useState(false);
+  const [showCompany, setShowCompany] = useState(false);
   const [saveState, setSaveState] = useState<"idle"|"saving"|"saved">("idle");
   const [lang, setLang] = useState<Lang>(() => (typeof window !== "undefined" && (localStorage.getItem(LANG_KEY) as Lang)) || "ar");
   const [sendItem, setSendItem] = useState<Row | null>(null);
   const logoRef = useRef<HTMLInputElement>(null);
   const dirtyIds = useRef<Set<string>>(new Set());
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const ownUpdate = useRef<Map<string, number>>(new Map()); // id → ts of own write
   const t = T[lang];
 
-  /* ----- load + realtime ----- */
+  /* ----- load ----- */
   const loadAll = useCallback(async () => {
     const { data, error } = await supabase.from("proformas").select("id, name, data, sort_order").order("sort_order").order("created_at");
     if (error) { console.error(error); return; }
@@ -152,15 +148,6 @@ export default function ProformaApp() {
       await loadAll();
       setLoaded(true);
     })();
-    const ch = supabase
-      .channel("proformas-rt")
-      .on("postgres_changes", { event: "*", schema: "public", table: "proformas" }, (payload) => {
-        const id = (payload.new as { id?: string } | null)?.id ?? (payload.old as { id?: string } | null)?.id;
-        if (id && ownUpdate.current.has(id) && Date.now() - (ownUpdate.current.get(id) ?? 0) < 2500) return;
-        loadAll();
-      })
-      .subscribe();
-    return () => { supabase.removeChannel(ch); };
   }, [loadAll]);
 
   // ensure at least one + pick active
@@ -168,7 +155,6 @@ export default function ProformaApp() {
     if (!loaded) return;
     if (proformas.length === 0) {
       const p = newProforma(lang === "ar" ? "بروفورما 1" : "Proforma 1", 0);
-      ownUpdate.current.set(p.id, Date.now());
       supabase.from("proformas").insert({ id: p.id, name: p.name, sort_order: 0, data: { meta: p.meta, rows: p.rows, themeColor: p.themeColor } }).then(loadAll);
       return;
     }
@@ -190,7 +176,6 @@ export default function ProformaApp() {
     setSaveState("saving");
     const targets = proformas.filter((p) => ids.includes(p.id));
     for (const p of targets) {
-      ownUpdate.current.set(p.id, Date.now());
       const { error } = await supabase.from("proformas").upsert({
         id: p.id, name: p.name, sort_order: p.sortOrder,
         data: { meta: p.meta, rows: p.rows, themeColor: p.themeColor },
@@ -221,7 +206,6 @@ export default function ProformaApp() {
   const createProforma = async () => {
     const p = newProforma(lang === "ar" ? `بروفورما ${proformas.length+1}` : `Proforma ${proformas.length+1}`, proformas.length);
     if (active) { p.meta = { ...active.meta, customer: "", date: new Date().toISOString().slice(0,10) }; p.themeColor = active.themeColor; }
-    ownUpdate.current.set(p.id, Date.now());
     const { error } = await supabase.from("proformas").insert({ id: p.id, name: p.name, sort_order: p.sortOrder, data: { meta: p.meta, rows: p.rows, themeColor: p.themeColor } });
     if (error) { toast.error("فشل الإنشاء"); return; }
     setProformas((ps) => [...ps, p]); setActiveId(p.id);
@@ -230,7 +214,6 @@ export default function ProformaApp() {
   const deleteProforma = async (id: string) => {
     if (proformas.length === 1) { toast.error(lang === "ar" ? "ميصحش تحذف الوحيدة" : "Can't delete the only one"); return; }
     if (!confirm(lang === "ar" ? "تأكيد الحذف؟" : "Delete this proforma?")) return;
-    ownUpdate.current.set(id, Date.now());
     await supabase.from("proformas").delete().eq("id", id);
     const next = proformas.filter((p) => p.id !== id);
     setProformas(next); if (activeId === id) setActiveId(next[0]?.id ?? "");
@@ -264,7 +247,6 @@ export default function ProformaApp() {
     for (const tid of targetIds) {
       const cur = proformas.find((p) => p.id === tid); if (!cur) continue;
       const updatedRows = [...cur.rows, { ...row, id: crypto.randomUUID() }];
-      ownUpdate.current.set(tid, Date.now());
       const { error } = await supabase.from("proformas").update({
         data: { meta: cur.meta, rows: updatedRows, themeColor: cur.themeColor }
       }).eq("id", tid);
@@ -432,6 +414,7 @@ export default function ProformaApp() {
 
   const onPrint = async () => { await flushSave(); setTimeout(() => window.print(), 200); };
   const onSaveNow = async () => { await flushSave(); toast.success(lang === "ar" ? "تم الحفظ" : "Saved"); };
+  const onLogout = async () => { await supabase.auth.signOut(); navigate({ to: "/auth" }); };
 
   const themeStyle: CSSProperties = { ["--accent" as never]: accent };
   const dir = lang === "ar" ? "rtl" : "ltr";
@@ -451,7 +434,7 @@ export default function ProformaApp() {
               <p className="text-[11px] uppercase tracking-wider text-muted-foreground">{meta.company}</p>
             </div>
             <span className="rounded-full px-2 py-0.5 text-[11px]" style={{ background: `${accent}22`, color: accent }}>
-              {saveState === "saving" ? t.saving : saveState === "saved" ? t.saved : <span className="flex items-center gap-1"><Cloud className="h-3 w-3" /> {lang === "ar" ? "مزامنة فورية" : "Live sync"}</span>}
+              {saveState === "saving" ? t.saving : saveState === "saved" ? t.saved : (lang === "ar" ? "جاهز" : "Ready")}
             </span>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -465,6 +448,7 @@ export default function ProformaApp() {
             <Button size="sm" onClick={createProforma} className="bg-purple-600 text-white hover:bg-purple-700"><FilePlus className="mr-1 h-4 w-4" /> {t.newInvoice}</Button>
             <Button size="sm" onClick={addRow} className="text-white hover:opacity-90" style={{ background: accent }}><Plus className="mr-1 h-4 w-4" /> {t.addItem}</Button>
             <Button size="sm" variant="outline" onClick={() => setShowLibrary(true)}><Library className="mr-1 h-4 w-4" /> {t.library}</Button>
+            <Button size="sm" variant="outline" onClick={() => setShowCompany(true)}>{lang === "ar" ? "بيانات الشركة" : "Company"}</Button>
             <div className="relative">
               <Button size="sm" variant="outline" onClick={() => setShowThemes((v) => !v)}><Palette className="mr-1 h-4 w-4" /> {t.theme}</Button>
               {showThemes && (
@@ -478,6 +462,7 @@ export default function ProformaApp() {
                 </div>
               )}
             </div>
+            <Button size="sm" variant="outline" onClick={onLogout} title="Logout"><LogOut className="h-4 w-4" /></Button>
           </div>
         </div>
         <div className="mx-auto flex max-w-[1400px] items-center gap-2 overflow-x-auto px-4 pb-3">
@@ -509,16 +494,16 @@ export default function ProformaApp() {
           <div className="grid grid-cols-2 gap-8 border-b px-6 pt-5 pb-3">
             <div>
               <div className="text-[11px] tracking-wider text-muted-foreground">{t.customer}</div>
-              <Input value={meta.customer} onChange={(e) => setMeta({ ...meta, customer: e.target.value })} className="border-0 border-b-2 bg-transparent px-0 text-base font-bold uppercase shadow-none focus-visible:ring-0" style={{ borderColor: accent }} placeholder={t.customer} />
+              <Input value={meta.customer} onChange={(e) => setMeta({ ...meta, customer: e.target.value })} className="mt-1 h-9 rounded-md border border-input bg-white px-2 text-base font-bold uppercase shadow-sm focus-visible:ring-2 print:border-b-2 print:border-l-0 print:border-r-0 print:border-t-0 print:rounded-none print:shadow-none print:px-0" style={{ borderColor: accent }} placeholder={t.customer} />
             </div>
             <div className="text-end">
               <div className="text-[11px] tracking-wider text-muted-foreground">{t.date}</div>
-              <Input type="date" value={meta.date} onChange={(e) => setMeta({ ...meta, date: e.target.value })} className="border-0 border-b-2 bg-transparent px-0 text-end text-base font-bold shadow-none focus-visible:ring-0" style={{ borderColor: accent }} />
+              <Input type="date" value={meta.date} onChange={(e) => setMeta({ ...meta, date: e.target.value })} className="mt-1 h-9 rounded-md border border-input bg-white px-2 text-end text-base font-bold shadow-sm focus-visible:ring-2 print:border-b-2 print:border-l-0 print:border-r-0 print:border-t-0 print:rounded-none print:shadow-none print:px-0" style={{ borderColor: accent }} />
             </div>
           </div>
           {/* TABLE */}
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1300px] border-collapse text-[12px]" dir="ltr">
+            <table className="w-full min-w-[1300px] border-collapse text-[12px] print:min-w-0 print:text-[9px]" dir="ltr">
               <thead>
                 <tr className="text-left" style={{ background: `${accent}15`, color: accent }}>
                   {t.cols.map((h) => (<th key={h} className="px-2 py-2.5 text-xs font-semibold uppercase">{h}</th>))}
@@ -575,20 +560,31 @@ export default function ProformaApp() {
 
       {/* PRINT CSS */}
       <style>{`
-        @page { size: A4 landscape; margin: 8mm; }
+        @page { size: A4 landscape; margin: 6mm; }
         @media print {
-          body { background: white !important; }
+          html, body { background: white !important; }
+          body { margin: 0 !important; }
           .print\\:hidden { display: none !important; }
           #printable { box-shadow: none !important; border-radius: 0 !important; }
+          #printable .overflow-x-auto { overflow: visible !important; }
+          #printable table { width: 100% !important; table-layout: fixed !important; }
+          #printable td, #printable th { word-break: break-word; }
+          #printable input { border: none !important; background: transparent !important; padding: 0 !important; box-shadow: none !important; }
           #printable, #printable * {
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
             color-adjust: exact !important;
           }
-          input, table { border-color: #e5e7eb !important; }
-          input { background: transparent !important; }
+          /* hide scrollbars */
+          ::-webkit-scrollbar { display: none !important; }
         }
       `}</style>
+
+      {showCompany && (
+        <CompanyModal meta={meta} accent={accent} lang={lang}
+          onSave={(m) => { setMeta(m); setShowCompany(false); toast.success(lang === "ar" ? "تم الحفظ" : "Saved"); }}
+          onCancel={() => setShowCompany(false)} />
+      )}
     </div>
   );
 }
@@ -596,7 +592,7 @@ export default function ProformaApp() {
 /* ───────────────────────────  PIECES  ─────────────────────────── */
 
 function CellInput({ value, onChange, type = "text", align = "center" }: { value: string; onChange: (v: string) => void; type?: string; align?: "left"|"center"|"right" }) {
-  return <input type={type} value={value} onChange={(e) => onChange(e.target.value)} className="w-full bg-transparent px-1 py-1 text-[12px] outline-none focus:bg-muted/40" style={{ textAlign: align }} />;
+  return <input type={type} value={value} onChange={(e) => onChange(e.target.value)} className="w-full rounded border border-input bg-white px-1.5 py-1 text-[12px] outline-none transition focus:border-foreground focus:ring-1 focus:ring-foreground/20 print:border-transparent print:bg-transparent print:ring-0" style={{ textAlign: align }} />;
 }
 function ImgCell({ src, onPick, icon }: { src: string; onPick: (f: File | null) => void; icon: "img"|"pkg" }) {
   const ref = useRef<HTMLInputElement>(null);
@@ -716,6 +712,40 @@ function SendToModal({ item, targets, accent, lang, onCancel, onSend }:
           <Button size="sm" onClick={() => onSend([...picked])} disabled={picked.size === 0} style={{ background: accent }} className="text-white">
             <Send className="me-1 h-4 w-4" /> {tt.sendNow} ({picked.size})
           </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CompanyModal({ meta, accent, lang, onSave, onCancel }:
+  { meta: Meta; accent: string; lang: Lang; onSave: (m: Meta) => void; onCancel: () => void; }) {
+  const [m, setM] = useState<Meta>(meta);
+  const isAr = lang === "ar";
+  const L = isAr
+    ? { title: "بيانات الشركة", company: "اسم الشركة", address: "العنوان", phone: "الهاتف", email: "الإيميل", notes: "ملاحظة الفاتورة", invoiceTitle: "عنوان الفاتورة", save: "حفظ", cancel: "إلغاء" }
+    : { title: "Company Info", company: "Company", address: "Address", phone: "Phone", email: "Email", notes: "Invoice Note", invoiceTitle: "Invoice Title", save: "Save", cancel: "Cancel" };
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onCancel}>
+      <div className="w-full max-w-lg overflow-hidden rounded-lg bg-white shadow-2xl" onClick={(e) => e.stopPropagation()} dir={isAr ? "rtl" : "ltr"}>
+        <div className="flex items-center justify-between border-b px-5 py-3" style={{ background: `${accent}15` }}>
+          <h3 className="font-semibold">{L.title}</h3>
+          <button onClick={onCancel} className="text-muted-foreground hover:text-foreground"><X className="h-5 w-5" /></button>
+        </div>
+        <div className="space-y-3 p-5">
+          {([
+            ["company", L.company], ["address", L.address], ["phone", L.phone],
+            ["email", L.email], ["title", L.invoiceTitle], ["notes", L.notes],
+          ] as const).map(([k, label]) => (
+            <div key={k}>
+              <label className="text-xs font-medium text-muted-foreground">{label}</label>
+              <Input value={m[k]} onChange={(e) => setM({ ...m, [k]: e.target.value })} className="mt-1" />
+            </div>
+          ))}
+        </div>
+        <div className="flex justify-end gap-2 border-t p-3">
+          <Button variant="outline" size="sm" onClick={onCancel}>{L.cancel}</Button>
+          <Button size="sm" onClick={() => onSave(m)} style={{ background: accent }} className="text-white">{L.save}</Button>
         </div>
       </div>
     </div>
