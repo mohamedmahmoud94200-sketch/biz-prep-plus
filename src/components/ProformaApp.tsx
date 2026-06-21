@@ -717,3 +717,37 @@ function SendToModal({ item, targets, accent, lang, onCancel, onSend }:
     </div>
   );
 }
+
+function CompanyModal({ meta, accent, lang, onSave, onCancel }:
+  { meta: Meta; accent: string; lang: Lang; onSave: (m: Meta) => void; onCancel: () => void; }) {
+  const [m, setM] = useState<Meta>(meta);
+  const isAr = lang === "ar";
+  const L = isAr
+    ? { title: "بيانات الشركة", company: "اسم الشركة", address: "العنوان", phone: "الهاتف", email: "الإيميل", notes: "ملاحظة الفاتورة", invoiceTitle: "عنوان الفاتورة", save: "حفظ", cancel: "إلغاء" }
+    : { title: "Company Info", company: "Company", address: "Address", phone: "Phone", email: "Email", notes: "Invoice Note", invoiceTitle: "Invoice Title", save: "Save", cancel: "Cancel" };
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onCancel}>
+      <div className="w-full max-w-lg overflow-hidden rounded-lg bg-white shadow-2xl" onClick={(e) => e.stopPropagation()} dir={isAr ? "rtl" : "ltr"}>
+        <div className="flex items-center justify-between border-b px-5 py-3" style={{ background: `${accent}15` }}>
+          <h3 className="font-semibold">{L.title}</h3>
+          <button onClick={onCancel} className="text-muted-foreground hover:text-foreground"><X className="h-5 w-5" /></button>
+        </div>
+        <div className="space-y-3 p-5">
+          {([
+            ["company", L.company], ["address", L.address], ["phone", L.phone],
+            ["email", L.email], ["title", L.invoiceTitle], ["notes", L.notes],
+          ] as const).map(([k, label]) => (
+            <div key={k}>
+              <label className="text-xs font-medium text-muted-foreground">{label}</label>
+              <Input value={m[k]} onChange={(e) => setM({ ...m, [k]: e.target.value })} className="mt-1" />
+            </div>
+          ))}
+        </div>
+        <div className="flex justify-end gap-2 border-t p-3">
+          <Button variant="outline" size="sm" onClick={onCancel}>{L.cancel}</Button>
+          <Button size="sm" onClick={() => onSave(m)} style={{ background: accent }} className="text-white">{L.save}</Button>
+        </div>
+      </div>
+    </div>
+  );
+}
