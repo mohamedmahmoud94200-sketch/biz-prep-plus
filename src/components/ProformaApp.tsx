@@ -484,8 +484,14 @@ export default function ProformaApp() {
           <div className="overflow-x-auto">
             <table className="w-full min-w-[1300px] border-collapse text-[12px] print:min-w-0 print:text-[9px]" dir="ltr">
               <thead>
-                <tr className="text-left" style={{ background: `${accent}15`, color: accent }}>
-                  {t.cols.map((h) => (<th key={h} className="px-2 py-2.5 text-xs font-semibold uppercase">{h}</th>))}
+                <tr style={{ background: `${accent}15`, color: accent }}>
+                  {t.cols.map((h, ci) => {
+                    // 0=No, 1=Item Name (left), 2=Description (left), rest centered
+                    const align = ci === 1 || ci === 2 ? "text-left" : "text-center";
+                    return (
+                      <th key={h} className={`px-2 py-2.5 text-xs font-semibold uppercase ${align}`}>{h}</th>
+                    );
+                  })}
                 </tr>
               </thead>
               <tbody>
