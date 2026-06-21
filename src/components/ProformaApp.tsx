@@ -581,7 +581,7 @@ export default function ProformaApp() {
 /* ───────────────────────────  PIECES  ─────────────────────────── */
 
 function CellInput({ value, onChange, type = "text", align = "center" }: { value: string; onChange: (v: string) => void; type?: string; align?: "left"|"center"|"right" }) {
-  return <input type={type} value={value} onChange={(e) => onChange(e.target.value)} className="w-full bg-transparent px-1 py-1 text-[12px] outline-none focus:bg-muted/40" style={{ textAlign: align }} />;
+  return <input type={type} value={value} onChange={(e) => onChange(e.target.value)} className="w-full rounded border border-input bg-white px-1.5 py-1 text-[12px] outline-none transition focus:border-foreground focus:ring-1 focus:ring-foreground/20 print:border-transparent print:bg-transparent print:ring-0" style={{ textAlign: align }} />;
 }
 function ImgCell({ src, onPick, icon }: { src: string; onPick: (f: File | null) => void; icon: "img"|"pkg" }) {
   const ref = useRef<HTMLInputElement>(null);
