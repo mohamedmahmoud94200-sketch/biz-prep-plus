@@ -186,16 +186,15 @@ export default function ProformaApp() {
     setTimeout(() => setSaveState((s) => (s === "saved" ? "idle" : s)), 1500);
   }, [proformas]);
 
-  const scheduleSave = useCallback((id: string) => {
+  const markDirty = useCallback((id: string) => {
     dirtyIds.current.add(id);
-    if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(flushSave, 800);
-  }, [flushSave]);
+    setSaveState((s) => (s === "saving" ? s : "idle"));
+  }, []);
 
   const updateActive = (patch: Partial<Proforma>) => {
     if (!active) return;
     setProformas((ps) => ps.map((p) => (p.id === active.id ? { ...p, ...patch } : p)));
-    scheduleSave(active.id);
+    markDirty(active.id);
   };
   const setMeta = (m: Meta) => updateActive({ meta: m });
   const setRows = (u: Row[] | ((rs: Row[]) => Row[])) =>
@@ -223,7 +222,7 @@ export default function ProformaApp() {
     const n = prompt(lang === "ar" ? "اسم البروفورما" : "Proforma name", cur.name);
     if (!n) return;
     setProformas((ps) => ps.map((p) => (p.id === id ? { ...p, name: n } : p)));
-    scheduleSave(id);
+    markDirty(id);
   };
 
   const totals = useMemo(() => {
