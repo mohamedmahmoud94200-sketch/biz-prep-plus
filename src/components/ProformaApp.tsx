@@ -277,71 +277,55 @@ export default function ProformaApp() {
 
   const fmtDate = (d: string) => { if (!d) return ""; const [y,m,da] = d.split("-"); return `${da}/${m}/${y}`; };
 
-  /* ───── PDF (English, for Arabic the user uses Print) ───── */
+  /* ───── PDF — capture #printable so Arabic & alignment match exactly ───── */
   const exportPDF = async () => {
-    const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
-    const pageW = doc.internal.pageSize.getWidth(); const pageH = doc.internal.pageSize.getHeight();
-    const [tr,tg,tb] = hexRgb(themeColor); const M = 24;
-    doc.setFillColor(tr,tg,tb); doc.roundedRect(M, M, pageW-M*2, 90, 6, 6, "F");
-    doc.setFillColor(255,255,255); doc.roundedRect(M+14, M+14, 62, 62, 4, 4, "F");
-    if (meta.logo) { try { doc.addImage(meta.logo, "JPEG", M+18, M+18, 54, 54, undefined, "FAST"); } catch {} }
-    doc.setTextColor(255,255,255); doc.setFont("helvetica","bold"); doc.setFontSize(42);
-    doc.text("proforma", pageW-M-18, M+64, { align: "right" });
-    const y2 = M+110;
-    doc.setTextColor(120); doc.setFont("helvetica","normal"); doc.setFontSize(8);
-    doc.text("CUSTOMER", M+6, y2); doc.text("DATE", pageW-M-6, y2, { align: "right" });
-    doc.setTextColor(20); doc.setFont("helvetica","bold"); doc.setFontSize(13);
-    doc.text(meta.customer || "—", M+6, y2+16); doc.text(fmtDate(meta.date), pageW-M-6, y2+16, { align: "right" });
-    doc.setDrawColor(tr,tg,tb); doc.setLineWidth(1);
-    doc.line(M+6, y2+22, pageW/2-10, y2+22); doc.line(pageW/2+10, y2+22, pageW-M-6, y2+22);
-    const head = [["No","Item Name","Description","Image","Packing","Ctn","Doz/Ctn","Set/Ctn","Pcs/Set","Price/Ctn","T.Amount","CBM","T.CBM","Weight","T.Weight"]];
-    const body = rows.map((r,i) => [i+1, r.itemName, r.description, "", "", r.ctn, r.dozCtn, r.setCtn, r.pcsSet, r.pricePerCtn, amount(r) || "", r.cbm, tCbm(r) || "", r.weight, tWeight(r) || ""]);
-    autoTable(doc, {
-      head, body, startY: y2+36, margin: { left: M, right: M },
-      styles: { fontSize: 7.5, cellPadding: 2, valign: "middle", halign: "center", minCellHeight: 56, lineColor: [230,230,230] },
-      headStyles: { fillColor: [tr,tg,tb], textColor: 255, fontSize: 8, minCellHeight: 22 },
-      columnStyles: { 0: { cellWidth: 24 }, 1: { halign: "left", cellWidth: 70 }, 2: { halign: "left", cellWidth: 80 }, 3: { cellWidth: 60 }, 4: { cellWidth: 60 } },
-      didDrawCell: (data) => {
-        if (data.section !== "body") return; const r = rows[data.row.index]; if (!r) return;
-        const drawImg = (src: string) => { if (!src) return;
-          try { const pad = 2; const size = Math.min(data.cell.width, data.cell.height) - pad*2;
-            const x = data.cell.x + (data.cell.width-size)/2; const y = data.cell.y + (data.cell.height-size)/2;
-            doc.addImage(src, "JPEG", x, y, size, size, undefined, "FAST"); } catch {}
-        };
-        if (data.column.index === 3) drawImg(r.image);
-        if (data.column.index === 4) drawImg(r.packing);
-      },
-    });
-    const finalY = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 12;
-    doc.setFont("helvetica","bold"); doc.setFontSize(9); doc.setTextColor(20);
-    doc.text(`• ${meta.notes}`, pageW-M, finalY, { align: "right" });
-    const cards = [
-      { label: "T.Ctn", val: String(totals.tCtn) },
-      { label: "T.CBM", val: totals.tCBM.toFixed(2) },
-      { label: "T.Weight", val: totals.tWt.toFixed(2) },
-      { label: "T.Amount", val: String(totals.tAmount) },
-    ];
-    const cw = 110, ch = 56, gap = 10; const totalW = cw*4 + gap*3;
-    let cx = pageW - M - totalW; const cy = finalY + 10;
-    cards.forEach((c) => {
-      doc.setDrawColor(tr,tg,tb); doc.setLineWidth(1); doc.setFillColor(255,255,255);
-      doc.roundedRect(cx, cy, cw, ch, 4, 4, "S");
-      doc.setFillColor(tr,tg,tb); doc.roundedRect(cx, cy, cw, 16, 4, 4, "F");
-      doc.rect(cx, cy+8, cw, 8, "F");
-      doc.setTextColor(255,255,255); doc.setFont("helvetica","bold"); doc.setFontSize(9);
-      doc.text(c.label, cx+cw/2, cy+11, { align: "center" });
-      doc.setTextColor(20); doc.setFontSize(14); doc.text(c.val, cx+cw/2, cy+40, { align: "center" });
-      cx += cw + gap;
-    });
-    const fy = pageH - 60;
-    doc.setFillColor(tr,tg,tb); doc.roundedRect(M, fy, pageW-M*2, 46, 6, 6, "F");
-    doc.setTextColor(255,255,255); doc.setFont("helvetica","normal"); doc.setFontSize(9);
-    doc.text(meta.address, pageW/2, fy+14, { align: "center" });
-    doc.setFontSize(8);
-    doc.text(`tel: ${meta.phone}`, pageW/2, fy+27, { align: "center" });
-    doc.text(`E-MAIL: ${meta.email}`, pageW/2, fy+40, { align: "center" });
-    doc.save(`${meta.title || "proforma"}-${meta.customer || "customer"}.pdf`);
-    toast.success("PDF ✓");
+    const el = document.getElementById("printable");
+    if (!el) return;
+    toast.message(lang === "ar" ? "بنحضّر الملف…" : "Preparing PDF…");
+    // Hide action column during capture
+    el.classList.add("pdf-capture");
+    try {
+      const canvas = await html2canvas(el, {
+        scale: 2, useCORS: true, backgroundColor: "#ffffff", logging: false,
+      });
+      const imgData = canvas.toDataURL("image/jpeg", 0.95);
+      const pdf = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
+      const pageW = pdf.internal.pageSize.getWidth();
+      const pageH = pdf.internal.pageSize.getHeight();
+      const margin = 18;
+      const imgW = pageW - margin * 2;
+      const imgH = (canvas.height * imgW) / canvas.width;
+      if (imgH <= pageH - margin * 2) {
+        pdf.addImage(imgData, "JPEG", margin, margin, imgW, imgH, undefined, "FAST");
+      } else {
+        // Multi-page slicing
+        const pageContentH = pageH - margin * 2;
+        const pxPerPt = canvas.width / imgW;
+        const sliceHeightPx = pageContentH * pxPerPt;
+        let renderedPx = 0;
+        while (renderedPx < canvas.height) {
+          const sliceCanvas = document.createElement("canvas");
+          sliceCanvas.width = canvas.width;
+          sliceCanvas.height = Math.min(sliceHeightPx, canvas.height - renderedPx);
+          const ctx = sliceCanvas.getContext("2d")!;
+          ctx.fillStyle = "#fff";
+          ctx.fillRect(0, 0, sliceCanvas.width, sliceCanvas.height);
+          ctx.drawImage(canvas, 0, renderedPx, canvas.width, sliceCanvas.height, 0, 0, canvas.width, sliceCanvas.height);
+          const sliceData = sliceCanvas.toDataURL("image/jpeg", 0.95);
+          const sliceImgH = (sliceCanvas.height * imgW) / sliceCanvas.width;
+          if (renderedPx > 0) pdf.addPage("a4", "landscape");
+          pdf.addImage(sliceData, "JPEG", margin, margin, imgW, sliceImgH, undefined, "FAST");
+          renderedPx += sliceCanvas.height;
+        }
+      }
+      pdf.save(`${meta.title || "proforma"}-${meta.customer || "customer"}.pdf`);
+      toast.success("PDF ✓");
+    } catch (e) {
+      console.error(e);
+      toast.error(lang === "ar" ? "فشل التصدير" : "Export failed");
+    } finally {
+      el.classList.remove("pdf-capture");
+    }
   };
 
   const exportPPTX = async () => {
