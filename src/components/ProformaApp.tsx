@@ -120,7 +120,6 @@ export default function ProformaApp() {
   const [sendItem, setSendItem] = useState<Row | null>(null);
   const logoRef = useRef<HTMLInputElement>(null);
   const dirtyIds = useRef<Set<string>>(new Set());
-  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const t = T[lang];
 
   /* ----- load ----- */
