@@ -30,7 +30,7 @@ const LANG_KEY = "proforma-lang";
 
 const T = {
   ar: {
-    print: "طباعة / PDF", pdf: "PDF (إنجليزى)", pptx: "PowerPoint",
+    print: "طباعة", pdf: "PDF", pptx: "PowerPoint",
     newInvoice: "بروفورما جديدة", addItem: "إضافة منتج", library: "مكتبة المنتجات",
     theme: "اللون", save: "حفظ الآن", saved: "محفوظ ☁", saving: "جارى الحفظ…",
     lang: "EN", customer: "العميل", date: "التاريخ",
@@ -44,7 +44,7 @@ const T = {
     proforma: "بروفورما",
   },
   en: {
-    print: "Print / PDF", pdf: "PDF (English)", pptx: "PowerPoint",
+    print: "Print", pdf: "PDF", pptx: "PowerPoint",
     newInvoice: "New Invoice", addItem: "Add Item", library: "Library",
     theme: "Theme", save: "Save Now", saved: "Saved ☁", saving: "Saving…",
     lang: "ع", customer: "CUSTOMER", date: "DATE",
