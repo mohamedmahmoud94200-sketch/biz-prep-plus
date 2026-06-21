@@ -540,6 +540,9 @@ export default function ProformaApp() {
       {/* PRINT CSS */}
       <style>{`
         @page { size: A4 landscape; margin: 6mm; }
+        /* Hide the Actions column when generating PDF via html2canvas */
+        #printable.pdf-capture th:last-child,
+        #printable.pdf-capture td:last-child { display: none !important; }
         @media print {
           html, body { background: white !important; }
           body { margin: 0 !important; }
@@ -547,6 +550,7 @@ export default function ProformaApp() {
           #printable { box-shadow: none !important; border-radius: 0 !important; }
           #printable .overflow-x-auto { overflow: visible !important; }
           #printable table { width: 100% !important; table-layout: fixed !important; }
+          #printable th:last-child, #printable td:last-child { display: none !important; }
           #printable td, #printable th { word-break: break-word; }
           #printable input { border: none !important; background: transparent !important; padding: 0 !important; box-shadow: none !important; }
           #printable, #printable * {
