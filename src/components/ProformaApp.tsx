@@ -104,10 +104,6 @@ async function processImage(file: File): Promise<string> {
     img.onerror = () => resolve(raw); img.src = raw;
   });
 }
-function hexRgb(hex: string): [number,number,number] {
-  const h = hex.replace("#",""); const f = h.length === 3 ? h.split("").map(c=>c+c).join("") : h;
-  const n = parseInt(f, 16); return [(n>>16)&255,(n>>8)&255,n&255];
-}
 
 /* ───────────────────────────  COMPONENT  ─────────────────────────── */
 
