@@ -494,16 +494,16 @@ export default function ProformaApp() {
           <div className="grid grid-cols-2 gap-8 border-b px-6 pt-5 pb-3">
             <div>
               <div className="text-[11px] tracking-wider text-muted-foreground">{t.customer}</div>
-              <Input value={meta.customer} onChange={(e) => setMeta({ ...meta, customer: e.target.value })} className="border-0 border-b-2 bg-transparent px-0 text-base font-bold uppercase shadow-none focus-visible:ring-0" style={{ borderColor: accent }} placeholder={t.customer} />
+              <Input value={meta.customer} onChange={(e) => setMeta({ ...meta, customer: e.target.value })} className="mt-1 h-9 rounded-md border border-input bg-white px-2 text-base font-bold uppercase shadow-sm focus-visible:ring-2 print:border-b-2 print:border-l-0 print:border-r-0 print:border-t-0 print:rounded-none print:shadow-none print:px-0" style={{ borderColor: accent }} placeholder={t.customer} />
             </div>
             <div className="text-end">
               <div className="text-[11px] tracking-wider text-muted-foreground">{t.date}</div>
-              <Input type="date" value={meta.date} onChange={(e) => setMeta({ ...meta, date: e.target.value })} className="border-0 border-b-2 bg-transparent px-0 text-end text-base font-bold shadow-none focus-visible:ring-0" style={{ borderColor: accent }} />
+              <Input type="date" value={meta.date} onChange={(e) => setMeta({ ...meta, date: e.target.value })} className="mt-1 h-9 rounded-md border border-input bg-white px-2 text-end text-base font-bold shadow-sm focus-visible:ring-2 print:border-b-2 print:border-l-0 print:border-r-0 print:border-t-0 print:rounded-none print:shadow-none print:px-0" style={{ borderColor: accent }} />
             </div>
           </div>
           {/* TABLE */}
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1300px] border-collapse text-[12px]" dir="ltr">
+            <table className="w-full min-w-[1300px] border-collapse text-[12px] print:min-w-0 print:text-[9px]" dir="ltr">
               <thead>
                 <tr className="text-left" style={{ background: `${accent}15`, color: accent }}>
                   {t.cols.map((h) => (<th key={h} className="px-2 py-2.5 text-xs font-semibold uppercase">{h}</th>))}
@@ -560,20 +560,31 @@ export default function ProformaApp() {
 
       {/* PRINT CSS */}
       <style>{`
-        @page { size: A4 landscape; margin: 8mm; }
+        @page { size: A4 landscape; margin: 6mm; }
         @media print {
-          body { background: white !important; }
+          html, body { background: white !important; }
+          body { margin: 0 !important; }
           .print\\:hidden { display: none !important; }
           #printable { box-shadow: none !important; border-radius: 0 !important; }
+          #printable .overflow-x-auto { overflow: visible !important; }
+          #printable table { width: 100% !important; table-layout: fixed !important; }
+          #printable td, #printable th { word-break: break-word; }
+          #printable input { border: none !important; background: transparent !important; padding: 0 !important; box-shadow: none !important; }
           #printable, #printable * {
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
             color-adjust: exact !important;
           }
-          input, table { border-color: #e5e7eb !important; }
-          input { background: transparent !important; }
+          /* hide scrollbars */
+          ::-webkit-scrollbar { display: none !important; }
         }
       `}</style>
+
+      {showCompany && (
+        <CompanyModal meta={meta} accent={accent} lang={lang}
+          onSave={(m) => { setMeta(m); setShowCompany(false); toast.success(lang === "ar" ? "تم الحفظ" : "Saved"); }}
+          onCancel={() => setShowCompany(false)} />
+      )}
     </div>
   );
 }
