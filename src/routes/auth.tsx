@@ -12,6 +12,7 @@ export const Route = createFileRoute("/auth")({
 
 function AuthPage() {
   const navigate = useNavigate();
+  const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -25,14 +26,23 @@ function AuthPage() {
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    setLoading(false);
-    if (error) {
-      toast.error(error.message);
-      return;
+    if (mode === "signup") {
+      const { error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: { emailRedirectTo: window.location.origin },
+      });
+      setLoading(false);
+      if (error) { toast.error(error.message); return; }
+      toast.success("تم إنشاء الحساب / Account created");
+      navigate({ to: "/" });
+    } else {
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      setLoading(false);
+      if (error) { toast.error(error.message); return; }
+      toast.success("أهلاً / Welcome");
+      navigate({ to: "/" });
     }
-    toast.success("أهلاً / Welcome");
-    navigate({ to: "/" });
   };
 
   return (
@@ -40,7 +50,19 @@ function AuthPage() {
       <form onSubmit={onSubmit} className="w-full max-w-sm space-y-4 rounded-lg border bg-white p-6 shadow-sm">
         <div className="text-center">
           <h1 className="text-xl font-bold">Proforma Admin</h1>
-          <p className="mt-1 text-xs text-muted-foreground">تسجيل دخول الأدمن — Sign in</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {mode === "signin" ? "تسجيل دخول — Sign in" : "إنشاء حساب — Create account"}
+          </p>
+        </div>
+        <div className="flex rounded-md border p-1 text-xs">
+          <button type="button" onClick={() => setMode("signin")}
+            className={`flex-1 rounded py-1.5 ${mode === "signin" ? "bg-[#2BB39B] text-white" : "text-muted-foreground"}`}>
+            دخول / Sign in
+          </button>
+          <button type="button" onClick={() => setMode("signup")}
+            className={`flex-1 rounded py-1.5 ${mode === "signup" ? "bg-[#2BB39B] text-white" : "text-muted-foreground"}`}>
+            تسجيل / Sign up
+          </button>
         </div>
         <div className="space-y-1.5">
           <label className="text-xs font-medium">Email / البريد</label>
@@ -51,10 +73,10 @@ function AuthPage() {
           <Input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} dir="ltr" />
         </div>
         <Button type="submit" disabled={loading} className="w-full bg-[#2BB39B] hover:bg-[#249e88]">
-          {loading ? "..." : "دخول / Sign in"}
+          {loading ? "..." : mode === "signin" ? "دخول / Sign in" : "تسجيل / Sign up"}
         </Button>
         <p className="text-center text-[11px] text-muted-foreground">
-          الحسابات يضيفها الأدمن من لوحة التحكم فقط.
+          أي حد بإيميل يقدر يدخل ويعدّل.
         </p>
       </form>
     </div>
