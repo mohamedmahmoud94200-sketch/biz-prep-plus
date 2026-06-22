@@ -593,13 +593,29 @@ export default function ProformaApp() {
 /* ───────────────────────────  PIECES  ─────────────────────────── */
 
 function CellInput({ value, onChange, type = "text", align = "center" }: { value: string; onChange: (v: string) => void; type?: string; align?: "left"|"center"|"right" }) {
-  return <input type={type} value={value} onChange={(e) => onChange(e.target.value)} className="w-full rounded border border-input bg-white px-1.5 py-1 text-[12px] outline-none transition focus:border-foreground focus:ring-1 focus:ring-foreground/20 print:border-transparent print:bg-transparent print:ring-0" style={{ textAlign: align }} />;
+  return (
+    <>
+      <input
+        type={type}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="cell-input w-full rounded border border-input bg-white px-1.5 py-1 text-[12px] outline-none transition focus:border-foreground focus:ring-1 focus:ring-foreground/20 print:hidden"
+        style={{ textAlign: align }}
+      />
+      <div
+        className="cell-text hidden whitespace-pre-wrap break-words px-1 py-1 text-[12px] leading-tight print:block"
+        style={{ textAlign: align }}
+      >
+        {value || "\u00A0"}
+      </div>
+    </>
+  );
 }
 function ImgCell({ src, onPick, icon }: { src: string; onPick: (f: File | null) => void; icon: "img"|"pkg" }) {
   const ref = useRef<HTMLInputElement>(null);
   return (
     <>
-      <button type="button" onClick={() => ref.current?.click()} className="mx-auto flex h-14 w-14 items-center justify-center overflow-hidden rounded border border-dashed bg-muted/30 hover:border-foreground">
+      <button type="button" onClick={() => ref.current?.click()} className={`img-cell-btn mx-auto flex h-14 w-14 items-center justify-center overflow-hidden rounded border ${src ? "" : "border-dashed bg-muted/30"} hover:border-foreground`}>
         {src ? <img src={src} alt="" className="h-full w-full object-cover" /> : icon === "img" ? <ImageIcon className="h-4 w-4 text-muted-foreground" /> : <Package className="h-4 w-4 text-muted-foreground" />}
       </button>
       <input ref={ref} type="file" accept="image/*" className="hidden" onChange={(e) => onPick(e.target.files?.[0] ?? null)} />
