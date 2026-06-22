@@ -95,12 +95,12 @@ async function processImage(file: File): Promise<string> {
   return new Promise((resolve) => {
     const img = new Image();
     img.onload = () => {
-      const MAX = 1200; let w = img.width, h = img.height;
+      const MAX = 2000; let w = img.width, h = img.height;
       if (w > MAX || h > MAX) { const r = Math.min(MAX/w, MAX/h); w = Math.round(w*r); h = Math.round(h*r); }
       const c = document.createElement("canvas"); c.width = w; c.height = h;
       const ctx = c.getContext("2d")!; ctx.imageSmoothingQuality = "high";
       ctx.fillStyle = "#FFF"; ctx.fillRect(0,0,w,h); ctx.drawImage(img,0,0,w,h);
-      resolve(c.toDataURL("image/jpeg", 0.88));
+      resolve(c.toDataURL("image/jpeg", 0.92));
     };
     img.onerror = () => resolve(raw); img.src = raw;
   });
