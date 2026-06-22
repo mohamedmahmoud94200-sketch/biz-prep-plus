@@ -561,15 +561,23 @@ export default function ProformaApp() {
         /* Hide the Actions column when generating PDF via html2canvas */
         #printable.pdf-capture th:last-child,
         #printable.pdf-capture td:last-child { display: none !important; }
+        /* When capturing for PDF, swap inputs -> plain text, drop borders */
+        #printable.pdf-capture .cell-input { display: none !important; }
+        #printable.pdf-capture .cell-text { display: block !important; }
+        #printable.pdf-capture .img-cell-btn { border-color: transparent !important; background: transparent !important; }
+        #printable.pdf-capture input { border: none !important; background: transparent !important; box-shadow: none !important; }
+        #printable.pdf-capture table { table-layout: auto !important; }
+        #printable.pdf-capture td, #printable.pdf-capture th { word-break: break-word; white-space: normal !important; }
         @media print {
           html, body { background: white !important; }
           body { margin: 0 !important; }
           .print\\:hidden { display: none !important; }
           #printable { box-shadow: none !important; border-radius: 0 !important; }
           #printable .overflow-x-auto { overflow: visible !important; }
-          #printable table { width: 100% !important; table-layout: fixed !important; }
+          #printable table { width: 100% !important; table-layout: auto !important; }
+          #printable td, #printable th { white-space: normal !important; word-break: break-word; vertical-align: middle; }
+          #printable .img-cell-btn { border-color: transparent !important; background: transparent !important; }
           #printable th:last-child, #printable td:last-child { display: none !important; }
-          #printable td, #printable th { word-break: break-word; }
           #printable input { border: none !important; background: transparent !important; padding: 0 !important; box-shadow: none !important; }
           #printable, #printable * {
             -webkit-print-color-adjust: exact !important;
