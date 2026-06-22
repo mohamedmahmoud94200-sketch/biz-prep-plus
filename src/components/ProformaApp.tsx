@@ -720,7 +720,7 @@ function LibraryModal({ items, accent, lang, onPick, onClose }:
               {filtered.map((i, idx) => (
                 <button key={idx} onClick={() => onPick(i.row)} className="group flex flex-col overflow-hidden rounded-lg border bg-white text-left transition hover:shadow-md">
                   <div className="flex aspect-square items-center justify-center bg-muted/40">
-                    {i.row.image ? <img src={i.row.image} alt="" className="h-full w-full object-cover" /> : <ImageIcon className="h-8 w-8 text-muted-foreground" />}
+                    {i.row.image ? <img src={i.row.image} alt="" className="h-full w-full object-contain" /> : <ImageIcon className="h-8 w-8 text-muted-foreground" />}
                   </div>
                   <div className="p-2">
                     <div className="truncate text-sm font-medium">{i.row.itemName || "—"}</div>
@@ -753,7 +753,7 @@ function SendToModal({ item, targets, accent, lang, onCancel, onSend }:
         </div>
         <div className="flex items-center gap-3 border-b p-4">
           <div className="flex h-14 w-14 items-center justify-center overflow-hidden rounded border bg-muted/30">
-            {item.image ? <img src={item.image} alt="" className="h-full w-full object-cover" /> : <ImageIcon className="h-5 w-5 text-muted-foreground" />}
+            {item.image ? <img src={item.image} alt="" className="h-full w-full object-contain" /> : <ImageIcon className="h-5 w-5 text-muted-foreground" />}
           </div>
           <div className="flex-1">
             <div className="font-medium">{item.itemName || "—"}</div>
