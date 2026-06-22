@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   Plus, Trash2, FileDown, Presentation, Copy, Library, FilePlus, Palette, X,
-  Package, Printer, ImageIcon, Send, Save, Languages, LogOut,
+  Package, Printer, ImageIcon, Send, Save, Languages, LogOut, Star,
 } from "lucide-react";
 import { toast } from "sonner";
 import jsPDF from "jspdf";
@@ -22,7 +22,7 @@ type Meta = {
   customer: string; date: string; title: string; notes: string; logo: string;
 };
 type Proforma = {
-  id: string; name: string; meta: Meta; rows: Row[]; themeColor: string; sortOrder: number;
+  id: string; name: string; meta: Meta; rows: Row[]; themeColor: string; sortOrder: number; isPrimary?: boolean;
 };
 type Lang = "ar" | "en";
 
@@ -34,7 +34,7 @@ const T = {
     newInvoice: "بروفورما جديدة", addItem: "إضافة منتج", library: "مكتبة المنتجات",
     theme: "اللون", save: "حفظ الآن", saved: "محفوظ ☁", saving: "جارى الحفظ…",
     lang: "EN", customer: "العميل", date: "التاريخ",
-    cols: ["م","اسم المنتج","الوصف","صورة","التغليف","كراتين","دزينة/كرتون","سيت/كرتون","قطع/سيت","سعر الكرتون","الإجمالى","CBM","إجمالى CBM","الوزن","إجمالى الوزن","إجراءات"],
+    cols: ["م","اسم المنتج","الوصف","صورة","التغليف","كراتين","دزينة/كرتون","سيت/كرتون","قطع/سيت","سعر السيت","الإجمالى","CBM","إجمالى CBM","الوزن","إجمالى الوزن","إجراءات"],
     totals: { ctn:"إجمالى الكراتين", cbm:"إجمالى CBM", weight:"إجمالى الوزن", amount:"الإجمالى" },
     sendTo: "إرسال لبروفورمات", pickTargets: "اختار البروفورمات اللى عايز تبعت لها المنتج",
     sendNow: "إرسال", cancel: "إلغاء", rename: "تغيير الاسم", delete: "حذف", duplicate: "نسخ",
@@ -48,7 +48,7 @@ const T = {
     newInvoice: "New Invoice", addItem: "Add Item", library: "Library",
     theme: "Theme", save: "Save Now", saved: "Saved ☁", saving: "Saving…",
     lang: "ع", customer: "CUSTOMER", date: "DATE",
-    cols: ["No","Item Name","Description","Image","Packing","Ctn","Doz/Ctn","Set/Ctn","Pcs/Set","Price/Ctn","T.Amount","CBM","T.CBM","Weight","T.Weight","Actions"],
+    cols: ["No","Item Name","Description","Image","Packing","Ctn","Doz/Ctn","Set/Ctn","Pcs/Set","Price/Set","T.Amount","CBM","T.CBM","Weight","T.Weight","Actions"],
     totals: { ctn:"T.Ctn", cbm:"T.CBM", weight:"T.Weight", amount:"T.Amount" },
     sendTo: "Send to proformas", pickTargets: "Pick the proformas to copy this item to",
     sendNow: "Send", cancel: "Cancel", rename: "Rename", delete: "Delete", duplicate: "Duplicate",
@@ -82,7 +82,8 @@ const newProforma = (name: string, sortOrder = 0): Proforma => ({
 });
 
 const num = (s: string) => parseFloat(s || "0") || 0;
-const amount = (r: Row) => +(num(r.ctn) * num(r.pricePerCtn)).toFixed(2);
+// T.Amount = Ctn × Set/Ctn × Price/Set
+const amount = (r: Row) => +(num(r.ctn) * num(r.setCtn) * num(r.pricePerCtn)).toFixed(2);
 const tCbm = (r: Row) => +(num(r.ctn) * num(r.cbm)).toFixed(3);
 const tWeight = (r: Row) => +(num(r.ctn) * num(r.weight)).toFixed(2);
 
@@ -133,6 +134,7 @@ export default function ProformaApp() {
         meta: { ...defaultMeta(), ...(d.meta ?? {}) },
         rows: (d.rows ?? [newRow()]).map((x) => ({ ...newRow(), ...x })),
         themeColor: d.themeColor ?? "2BB39B",
+        isPrimary: d.isPrimary ?? false,
       };
     });
     setProformas(list);
@@ -173,7 +175,7 @@ export default function ProformaApp() {
     for (const p of targets) {
       const { error } = await supabase.from("proformas").upsert({
         id: p.id, name: p.name, sort_order: p.sortOrder,
-        data: { meta: p.meta, rows: p.rows, themeColor: p.themeColor },
+        data: { meta: p.meta, rows: p.rows, themeColor: p.themeColor, isPrimary: !!p.isPrimary },
       });
       if (error) { console.error(error); toast.error("فشل الحفظ / Save failed"); setSaveState("idle"); return; }
     }
@@ -200,7 +202,7 @@ export default function ProformaApp() {
   const createProforma = async () => {
     const p = newProforma(lang === "ar" ? `بروفورما ${proformas.length+1}` : `Proforma ${proformas.length+1}`, proformas.length);
     if (active) { p.meta = { ...active.meta, customer: "", date: new Date().toISOString().slice(0,10) }; p.themeColor = active.themeColor; }
-    const { error } = await supabase.from("proformas").insert({ id: p.id, name: p.name, sort_order: p.sortOrder, data: { meta: p.meta, rows: p.rows, themeColor: p.themeColor } });
+    const { error } = await supabase.from("proformas").insert({ id: p.id, name: p.name, sort_order: p.sortOrder, data: { meta: p.meta, rows: p.rows, themeColor: p.themeColor, isPrimary: false } });
     if (error) { toast.error("فشل الإنشاء"); return; }
     setProformas((ps) => [...ps, p]); setActiveId(p.id);
     toast.success(lang === "ar" ? "تم الإنشاء" : "Created");
@@ -218,6 +220,12 @@ export default function ProformaApp() {
     if (!n) return;
     setProformas((ps) => ps.map((p) => (p.id === id ? { ...p, name: n } : p)));
     markDirty(id);
+  };
+
+  const togglePrimary = (id: string) => {
+    setProformas((ps) => ps.map((p) => ({ ...p, isPrimary: p.id === id ? !p.isPrimary : false })));
+    proformas.forEach((p) => markDirty(p.id));
+    toast.message(lang === "ar" ? "اضغط «حفظ الآن» لتأكيد التغيير" : "Click Save Now to persist");
   };
 
   const totals = useMemo(() => {
@@ -253,7 +261,9 @@ export default function ProformaApp() {
 
   const library = useMemo(() => {
     const seen = new Set<string>(); const items: { row: Row; from: string }[] = [];
-    proformas.forEach((p) => p.rows.forEach((r) => {
+    const primary = proformas.find((p) => p.isPrimary);
+    const sources = primary ? [primary] : proformas;
+    sources.forEach((p) => p.rows.forEach((r) => {
       if (!r.itemName && !r.image) return;
       const key = `${r.itemName}|${r.image.slice(0, 60)}`;
       if (seen.has(key)) return; seen.add(key); items.push({ row: r, from: p.name });
@@ -325,25 +335,60 @@ export default function ProformaApp() {
 
   const exportPPTX = async () => {
     const pptx = new PptxGenJS(); pptx.layout = "LAYOUT_WIDE"; pptx.title = meta.title;
-    const ac = themeColor; const perSlide = 7;
-    const pages = Math.max(1, Math.ceil(rows.length / perSlide));
+    const ac = themeColor;
+    const perSlideFirst = 5; // header takes vertical space
+    const perSlideMid = 8;
+    const perSlideLast = 5; // totals + footer take space
+    // Distribute rows across slides
+    const chunks: Row[][] = [];
+    let remaining = [...rows];
+    if (remaining.length === 0) chunks.push([]);
+    while (remaining.length > 0) {
+      const isFirst = chunks.length === 0;
+      // Tentative size; we'll re-balance last slice for last-slide footer
+      const take = isFirst ? perSlideFirst : perSlideMid;
+      chunks.push(remaining.splice(0, take));
+    }
+    // If the last chunk is too big to also host the footer, split it
+    if (chunks.length > 0 && chunks[chunks.length - 1].length > perSlideLast) {
+      const last = chunks[chunks.length - 1];
+      const head = last.slice(0, perSlideMid);
+      const tail = last.slice(perSlideMid);
+      chunks[chunks.length - 1] = head;
+      if (tail.length) chunks.push(tail);
+    }
+    const pages = chunks.length;
+    const colW = [0.35,1.1,1.4,0.9,0.9,0.55,0.65,0.65,0.6,0.8,0.85,0.55,0.65,0.6,0.7];
+    const head = ["No","Item Name","Description","Image","Packing","Ctn","Doz/Ctn","Set/Ctn","Pcs/Set","Price/Set","T.Amount","CBM","T.CBM","Weight","T.Weight"];
+    let runningIndex = 0;
     for (let p = 0; p < pages; p++) {
+      const isFirst = p === 0;
+      const isLast = p === pages - 1;
       const s = pptx.addSlide(); s.background = { color: "FFFFFF" };
-      s.addShape("roundRect", { x: 0.3, y: 0.25, w: 12.73, h: 1.2, fill: { color: ac }, line: { color: ac }, rectRadius: 0.08 });
-      s.addShape("roundRect", { x: 0.45, y: 0.4, w: 0.9, h: 0.9, fill: { color: "FFFFFF" }, line: { color: "FFFFFF" }, rectRadius: 0.05 });
-      if (meta.logo) { try { s.addImage({ data: meta.logo, x: 0.5, y: 0.45, w: 0.8, h: 0.8 }); } catch {} }
-      s.addText("proforma", { x: 8, y: 0.55, w: 4.6, h: 0.8, fontSize: 40, bold: true, color: "FFFFFF", align: "right" });
-      s.addText("CUSTOMER", { x: 0.4, y: 1.55, w: 3, h: 0.2, fontSize: 8, color: "888888" });
-      s.addText("DATE", { x: 9.6, y: 1.55, w: 3, h: 0.2, fontSize: 8, color: "888888", align: "right" });
-      s.addText(meta.customer || "—", { x: 0.4, y: 1.72, w: 6, h: 0.3, fontSize: 14, bold: true, color: "222222" });
-      s.addText(fmtDate(meta.date), { x: 7, y: 1.72, w: 5.6, h: 0.3, fontSize: 14, bold: true, color: "222222", align: "right" });
-      const colW = [0.35,1.1,1.4,0.9,0.9,0.55,0.65,0.65,0.6,0.8,0.85,0.55,0.65,0.6,0.7];
-      const head = ["No","Item Name","Description","Image","Packing","Ctn","Doz/Ctn","Set/Ctn","Pcs/Set","Price/Ctn","T.Amount","CBM","T.CBM","Weight","T.Weight"];
+      let tY: number;
+      if (isFirst) {
+        // Full header banner
+        s.addShape("roundRect", { x: 0.3, y: 0.25, w: 12.73, h: 1.2, fill: { color: ac }, line: { color: ac }, rectRadius: 0.08 });
+        s.addShape("roundRect", { x: 0.45, y: 0.4, w: 0.9, h: 0.9, fill: { color: "FFFFFF" }, line: { color: "FFFFFF" }, rectRadius: 0.05 });
+        if (meta.logo) { try { s.addImage({ data: meta.logo, x: 0.5, y: 0.45, w: 0.8, h: 0.8 }); } catch {} }
+        s.addText("proforma", { x: 8, y: 0.55, w: 4.6, h: 0.8, fontSize: 40, bold: true, color: "FFFFFF", align: "right" });
+        s.addText("CUSTOMER", { x: 0.4, y: 1.55, w: 3, h: 0.2, fontSize: 8, color: "888888" });
+        s.addText("DATE", { x: 9.6, y: 1.55, w: 3, h: 0.2, fontSize: 8, color: "888888", align: "right" });
+        s.addText(meta.customer || "—", { x: 0.4, y: 1.72, w: 6, h: 0.3, fontSize: 14, bold: true, color: "222222" });
+        s.addText(fmtDate(meta.date), { x: 7, y: 1.72, w: 5.6, h: 0.3, fontSize: 14, bold: true, color: "222222", align: "right" });
+        tY = 2.25;
+      } else {
+        // Minimal slim header for continuation
+        s.addShape("rect", { x: 0.3, y: 0.25, w: 12.73, h: 0.5, fill: { color: ac }, line: { color: ac } });
+        s.addText(`${meta.title} — ${meta.customer || ""}`, { x: 0.4, y: 0.27, w: 9, h: 0.45, fontSize: 14, bold: true, color: "FFFFFF", valign: "middle" });
+        s.addText(`${p + 1} / ${pages}`, { x: 10, y: 0.27, w: 3, h: 0.45, fontSize: 11, color: "FFFFFF", align: "right", valign: "middle" });
+        tY = 0.95;
+      }
       const headerRow = head.map((h) => ({ text: h, options: { bold: true, color: "FFFFFF", fill: { color: ac }, align: "center", valign: "middle", fontSize: 9 } }));
-      const slice = rows.slice(p*perSlide, (p+1)*perSlide);
+      const slice = chunks[p];
       const tr: PptxGenJS.TableRow[] = [headerRow as unknown as PptxGenJS.TableRow];
       slice.forEach((r, idx) => {
-        const gi = p*perSlide + idx + 1;
+        const gi = runningIndex + idx + 1;
         tr.push([
           { text: String(gi), options: { align: "center", valign: "middle" } },
           { text: r.itemName, options: { valign: "middle" } },
@@ -357,7 +402,7 @@ export default function ProformaApp() {
           { text: r.weight, options: { align: "center" } }, { text: String(tWeight(r) || ""), options: { align: "center" } },
         ] as unknown as PptxGenJS.TableRow);
       });
-      const tY = 2.25; const rowH = 0.7;
+      const rowH = 0.7;
       s.addTable(tr, { x: 0.3, y: tY, w: 12.73, rowH, fontSize: 8.5, border: { type: "solid", pt: 0.5, color: "E5E7EB" }, valign: "middle", colW });
       const overlay = (oc: number, src: string, ri: number) => {
         if (!src) return; let x = 0.3; for (let i = 0; i < oc; i++) x += colW[i];
@@ -365,7 +410,8 @@ export default function ProformaApp() {
         const cx = x + (cw-size)/2; try { s.addImage({ data: src, x: cx, y, w: size, h: size }); } catch {}
       };
       slice.forEach((r, idx) => { overlay(3, r.image, idx); overlay(4, r.packing, idx); });
-      if (p === pages-1) {
+      runningIndex += slice.length;
+      if (isLast) {
         const cY = tY + rowH + slice.length*rowH + 0.25;
         s.addText(`• ${meta.notes}`, { x: 0.3, y: cY-0.05, w: 12.73, h: 0.3, fontSize: 11, bold: true, color: "222222", align: "right" });
         const cards = [
@@ -380,11 +426,12 @@ export default function ProformaApp() {
           s.addText(c.v, { x: cx, y: cY+0.55, w: cw, h: 0.6, fontSize: 18, bold: true, color: "222222", align: "center", valign: "middle" });
           cx += cw + gap;
         });
+        // Footer (company contact) — only on last slide
+        s.addShape("roundRect", { x: 0.3, y: 6.8, w: 12.73, h: 0.65, fill: { color: ac }, line: { color: ac }, rectRadius: 0.08 });
+        s.addText(meta.address, { x: 0.4, y: 6.82, w: 12.5, h: 0.22, fontSize: 9, color: "FFFFFF", align: "center" });
+        s.addText(`tel: ${meta.phone}`, { x: 0.4, y: 7.02, w: 12.5, h: 0.18, fontSize: 8, color: "FFFFFF", align: "center" });
+        s.addText(`E-MAIL: ${meta.email}`, { x: 0.4, y: 7.2, w: 12.5, h: 0.18, fontSize: 8, color: "FFFFFF", align: "center" });
       }
-      s.addShape("roundRect", { x: 0.3, y: 6.8, w: 12.73, h: 0.65, fill: { color: ac }, line: { color: ac }, rectRadius: 0.08 });
-      s.addText(meta.address, { x: 0.4, y: 6.82, w: 12.5, h: 0.22, fontSize: 9, color: "FFFFFF", align: "center" });
-      s.addText(`tel: ${meta.phone}`, { x: 0.4, y: 7.02, w: 12.5, h: 0.18, fontSize: 8, color: "FFFFFF", align: "center" });
-      s.addText(`E-MAIL: ${meta.email}`, { x: 0.4, y: 7.2, w: 12.5, h: 0.18, fontSize: 8, color: "FFFFFF", align: "center" });
     }
     await pptx.writeFile({ fileName: `${meta.title || "proforma"}-${meta.customer || "customer"}.pptx` });
     toast.success("PPTX ✓");
@@ -449,6 +496,9 @@ export default function ProformaApp() {
             return (
               <div key={p.id} className={`flex shrink-0 items-center gap-1 rounded-md px-3 py-1.5 text-sm transition ${isActive ? "text-white shadow" : "border bg-white hover:bg-muted"}`} style={isActive ? { background: accent } : undefined}>
                 <button onClick={() => setActiveId(p.id)} className="font-medium">{p.name} ({p.rows.length})</button>
+                <button onClick={() => togglePrimary(p.id)} className="ms-1" title={lang === "ar" ? "بروفورما أساسية (مصدر مكتبة المنتجات)" : "Primary (Library source)"}>
+                  <Star className={`h-3.5 w-3.5 ${p.isPrimary ? "fill-yellow-400 text-yellow-400" : "opacity-50"}`} />
+                </button>
                 <button onClick={() => renameProforma(p.id)} className="ms-1 text-[10px] opacity-70 hover:opacity-100" title={t.rename}>✎</button>
                 <button onClick={() => deleteProforma(p.id)} className="ms-0.5 opacity-60 hover:text-red-200" title={t.delete}><Trash2 className="h-3.5 w-3.5" /></button>
               </div>
@@ -548,15 +598,25 @@ export default function ProformaApp() {
         /* Hide the Actions column when generating PDF via html2canvas */
         #printable.pdf-capture th:last-child,
         #printable.pdf-capture td:last-child { display: none !important; }
+        /* When capturing for PDF, swap inputs -> plain text, drop borders */
+        #printable.pdf-capture .cell-input { display: none !important; }
+        #printable.pdf-capture .cell-text { display: block !important; }
+        #printable.pdf-capture .img-cell-btn { border-color: transparent !important; background: transparent !important; }
+        #printable.pdf-capture input { border: none !important; background: transparent !important; box-shadow: none !important; }
+        #printable.pdf-capture table { table-layout: auto !important; }
+        #printable.pdf-capture table { min-width: 0 !important; }
+        #printable.pdf-capture td, #printable.pdf-capture th { word-break: break-word; white-space: normal !important; }
         @media print {
           html, body { background: white !important; }
           body { margin: 0 !important; }
           .print\\:hidden { display: none !important; }
           #printable { box-shadow: none !important; border-radius: 0 !important; }
           #printable .overflow-x-auto { overflow: visible !important; }
-          #printable table { width: 100% !important; table-layout: fixed !important; }
+          #printable table { width: 100% !important; table-layout: auto !important; }
+          #printable table { min-width: 0 !important; }
+          #printable td, #printable th { white-space: normal !important; word-break: break-word; vertical-align: middle; }
+          #printable .img-cell-btn { border-color: transparent !important; background: transparent !important; }
           #printable th:last-child, #printable td:last-child { display: none !important; }
-          #printable td, #printable th { word-break: break-word; }
           #printable input { border: none !important; background: transparent !important; padding: 0 !important; box-shadow: none !important; }
           #printable, #printable * {
             -webkit-print-color-adjust: exact !important;
@@ -580,13 +640,29 @@ export default function ProformaApp() {
 /* ───────────────────────────  PIECES  ─────────────────────────── */
 
 function CellInput({ value, onChange, type = "text", align = "center" }: { value: string; onChange: (v: string) => void; type?: string; align?: "left"|"center"|"right" }) {
-  return <input type={type} value={value} onChange={(e) => onChange(e.target.value)} className="w-full rounded border border-input bg-white px-1.5 py-1 text-[12px] outline-none transition focus:border-foreground focus:ring-1 focus:ring-foreground/20 print:border-transparent print:bg-transparent print:ring-0" style={{ textAlign: align }} />;
+  return (
+    <>
+      <input
+        type={type}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="cell-input w-full rounded border border-input bg-white px-1.5 py-1 text-[12px] outline-none transition focus:border-foreground focus:ring-1 focus:ring-foreground/20 print:hidden"
+        style={{ textAlign: align }}
+      />
+      <div
+        className="cell-text hidden whitespace-pre-wrap break-words px-1 py-1 text-[12px] leading-tight print:block"
+        style={{ textAlign: align }}
+      >
+        {value || "\u00A0"}
+      </div>
+    </>
+  );
 }
 function ImgCell({ src, onPick, icon }: { src: string; onPick: (f: File | null) => void; icon: "img"|"pkg" }) {
   const ref = useRef<HTMLInputElement>(null);
   return (
     <>
-      <button type="button" onClick={() => ref.current?.click()} className="mx-auto flex h-14 w-14 items-center justify-center overflow-hidden rounded border border-dashed bg-muted/30 hover:border-foreground">
+      <button type="button" onClick={() => ref.current?.click()} className={`img-cell-btn mx-auto flex h-14 w-14 items-center justify-center overflow-hidden rounded border ${src ? "" : "border-dashed bg-muted/30"} hover:border-foreground`}>
         {src ? <img src={src} alt="" className="h-full w-full object-cover" /> : icon === "img" ? <ImageIcon className="h-4 w-4 text-muted-foreground" /> : <Package className="h-4 w-4 text-muted-foreground" />}
       </button>
       <input ref={ref} type="file" accept="image/*" className="hidden" onChange={(e) => onPick(e.target.files?.[0] ?? null)} />
