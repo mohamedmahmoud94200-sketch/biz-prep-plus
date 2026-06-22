@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   Plus, Trash2, FileDown, Presentation, Copy, Library, FilePlus, Palette, X,
-  Package, Printer, ImageIcon, Send, Save, Languages, LogOut,
+  Package, Printer, ImageIcon, Send, Save, Languages, LogOut, Star,
 } from "lucide-react";
 import { toast } from "sonner";
 import jsPDF from "jspdf";
@@ -22,7 +22,7 @@ type Meta = {
   customer: string; date: string; title: string; notes: string; logo: string;
 };
 type Proforma = {
-  id: string; name: string; meta: Meta; rows: Row[]; themeColor: string; sortOrder: number;
+  id: string; name: string; meta: Meta; rows: Row[]; themeColor: string; sortOrder: number; isPrimary?: boolean;
 };
 type Lang = "ar" | "en";
 
@@ -34,7 +34,7 @@ const T = {
     newInvoice: "بروفورما جديدة", addItem: "إضافة منتج", library: "مكتبة المنتجات",
     theme: "اللون", save: "حفظ الآن", saved: "محفوظ ☁", saving: "جارى الحفظ…",
     lang: "EN", customer: "العميل", date: "التاريخ",
-    cols: ["م","اسم المنتج","الوصف","صورة","التغليف","كراتين","دزينة/كرتون","سيت/كرتون","قطع/سيت","سعر الكرتون","الإجمالى","CBM","إجمالى CBM","الوزن","إجمالى الوزن","إجراءات"],
+    cols: ["م","اسم المنتج","الوصف","صورة","التغليف","كراتين","دزينة/كرتون","سيت/كرتون","قطع/سيت","سعر السيت","الإجمالى","CBM","إجمالى CBM","الوزن","إجمالى الوزن","إجراءات"],
     totals: { ctn:"إجمالى الكراتين", cbm:"إجمالى CBM", weight:"إجمالى الوزن", amount:"الإجمالى" },
     sendTo: "إرسال لبروفورمات", pickTargets: "اختار البروفورمات اللى عايز تبعت لها المنتج",
     sendNow: "إرسال", cancel: "إلغاء", rename: "تغيير الاسم", delete: "حذف", duplicate: "نسخ",
@@ -48,7 +48,7 @@ const T = {
     newInvoice: "New Invoice", addItem: "Add Item", library: "Library",
     theme: "Theme", save: "Save Now", saved: "Saved ☁", saving: "Saving…",
     lang: "ع", customer: "CUSTOMER", date: "DATE",
-    cols: ["No","Item Name","Description","Image","Packing","Ctn","Doz/Ctn","Set/Ctn","Pcs/Set","Price/Ctn","T.Amount","CBM","T.CBM","Weight","T.Weight","Actions"],
+    cols: ["No","Item Name","Description","Image","Packing","Ctn","Doz/Ctn","Set/Ctn","Pcs/Set","Price/Set","T.Amount","CBM","T.CBM","Weight","T.Weight","Actions"],
     totals: { ctn:"T.Ctn", cbm:"T.CBM", weight:"T.Weight", amount:"T.Amount" },
     sendTo: "Send to proformas", pickTargets: "Pick the proformas to copy this item to",
     sendNow: "Send", cancel: "Cancel", rename: "Rename", delete: "Delete", duplicate: "Duplicate",
@@ -82,7 +82,8 @@ const newProforma = (name: string, sortOrder = 0): Proforma => ({
 });
 
 const num = (s: string) => parseFloat(s || "0") || 0;
-const amount = (r: Row) => +(num(r.ctn) * num(r.pricePerCtn)).toFixed(2);
+// T.Amount = Ctn × Set/Ctn × Price/Set
+const amount = (r: Row) => +(num(r.ctn) * num(r.setCtn) * num(r.pricePerCtn)).toFixed(2);
 const tCbm = (r: Row) => +(num(r.ctn) * num(r.cbm)).toFixed(3);
 const tWeight = (r: Row) => +(num(r.ctn) * num(r.weight)).toFixed(2);
 
