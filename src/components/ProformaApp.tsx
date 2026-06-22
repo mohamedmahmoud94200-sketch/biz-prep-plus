@@ -225,7 +225,7 @@ export default function ProformaApp() {
   const togglePrimary = (id: string) => {
     setProformas((ps) => ps.map((p) => ({ ...p, isPrimary: p.id === id ? !p.isPrimary : false })));
     proformas.forEach((p) => markDirty(p.id));
-    setTimeout(() => flushSave(), 50);
+    toast.message(lang === "ar" ? "اضغط «حفظ الآن» لتأكيد التغيير" : "Click Save Now to persist");
   };
 
   const totals = useMemo(() => {
