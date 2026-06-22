@@ -459,6 +459,9 @@ export default function ProformaApp() {
             return (
               <div key={p.id} className={`flex shrink-0 items-center gap-1 rounded-md px-3 py-1.5 text-sm transition ${isActive ? "text-white shadow" : "border bg-white hover:bg-muted"}`} style={isActive ? { background: accent } : undefined}>
                 <button onClick={() => setActiveId(p.id)} className="font-medium">{p.name} ({p.rows.length})</button>
+                <button onClick={() => togglePrimary(p.id)} className="ms-1" title={lang === "ar" ? "بروفورما أساسية (مصدر مكتبة المنتجات)" : "Primary (Library source)"}>
+                  <Star className={`h-3.5 w-3.5 ${p.isPrimary ? "fill-yellow-400 text-yellow-400" : "opacity-50"}`} />
+                </button>
                 <button onClick={() => renameProforma(p.id)} className="ms-1 text-[10px] opacity-70 hover:opacity-100" title={t.rename}>✎</button>
                 <button onClick={() => deleteProforma(p.id)} className="ms-0.5 opacity-60 hover:text-red-200" title={t.delete}><Trash2 className="h-3.5 w-3.5" /></button>
               </div>
