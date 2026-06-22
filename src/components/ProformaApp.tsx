@@ -335,25 +335,60 @@ export default function ProformaApp() {
 
   const exportPPTX = async () => {
     const pptx = new PptxGenJS(); pptx.layout = "LAYOUT_WIDE"; pptx.title = meta.title;
-    const ac = themeColor; const perSlide = 7;
-    const pages = Math.max(1, Math.ceil(rows.length / perSlide));
+    const ac = themeColor;
+    const perSlideFirst = 5; // header takes vertical space
+    const perSlideMid = 8;
+    const perSlideLast = 5; // totals + footer take space
+    // Distribute rows across slides
+    const chunks: Row[][] = [];
+    let remaining = [...rows];
+    if (remaining.length === 0) chunks.push([]);
+    while (remaining.length > 0) {
+      const isFirst = chunks.length === 0;
+      // Tentative size; we'll re-balance last slice for last-slide footer
+      const take = isFirst ? perSlideFirst : perSlideMid;
+      chunks.push(remaining.splice(0, take));
+    }
+    // If the last chunk is too big to also host the footer, split it
+    if (chunks.length > 0 && chunks[chunks.length - 1].length > perSlideLast) {
+      const last = chunks[chunks.length - 1];
+      const head = last.slice(0, perSlideMid);
+      const tail = last.slice(perSlideMid);
+      chunks[chunks.length - 1] = head;
+      if (tail.length) chunks.push(tail);
+    }
+    const pages = chunks.length;
+    const colW = [0.35,1.1,1.4,0.9,0.9,0.55,0.65,0.65,0.6,0.8,0.85,0.55,0.65,0.6,0.7];
+    const head = ["No","Item Name","Description","Image","Packing","Ctn","Doz/Ctn","Set/Ctn","Pcs/Set","Price/Set","T.Amount","CBM","T.CBM","Weight","T.Weight"];
+    let runningIndex = 0;
     for (let p = 0; p < pages; p++) {
+      const isFirst = p === 0;
+      const isLast = p === pages - 1;
       const s = pptx.addSlide(); s.background = { color: "FFFFFF" };
-      s.addShape("roundRect", { x: 0.3, y: 0.25, w: 12.73, h: 1.2, fill: { color: ac }, line: { color: ac }, rectRadius: 0.08 });
-      s.addShape("roundRect", { x: 0.45, y: 0.4, w: 0.9, h: 0.9, fill: { color: "FFFFFF" }, line: { color: "FFFFFF" }, rectRadius: 0.05 });
-      if (meta.logo) { try { s.addImage({ data: meta.logo, x: 0.5, y: 0.45, w: 0.8, h: 0.8 }); } catch {} }
-      s.addText("proforma", { x: 8, y: 0.55, w: 4.6, h: 0.8, fontSize: 40, bold: true, color: "FFFFFF", align: "right" });
-      s.addText("CUSTOMER", { x: 0.4, y: 1.55, w: 3, h: 0.2, fontSize: 8, color: "888888" });
-      s.addText("DATE", { x: 9.6, y: 1.55, w: 3, h: 0.2, fontSize: 8, color: "888888", align: "right" });
-      s.addText(meta.customer || "—", { x: 0.4, y: 1.72, w: 6, h: 0.3, fontSize: 14, bold: true, color: "222222" });
-      s.addText(fmtDate(meta.date), { x: 7, y: 1.72, w: 5.6, h: 0.3, fontSize: 14, bold: true, color: "222222", align: "right" });
-      const colW = [0.35,1.1,1.4,0.9,0.9,0.55,0.65,0.65,0.6,0.8,0.85,0.55,0.65,0.6,0.7];
-      const head = ["No","Item Name","Description","Image","Packing","Ctn","Doz/Ctn","Set/Ctn","Pcs/Set","Price/Ctn","T.Amount","CBM","T.CBM","Weight","T.Weight"];
+      let tY: number;
+      if (isFirst) {
+        // Full header banner
+        s.addShape("roundRect", { x: 0.3, y: 0.25, w: 12.73, h: 1.2, fill: { color: ac }, line: { color: ac }, rectRadius: 0.08 });
+        s.addShape("roundRect", { x: 0.45, y: 0.4, w: 0.9, h: 0.9, fill: { color: "FFFFFF" }, line: { color: "FFFFFF" }, rectRadius: 0.05 });
+        if (meta.logo) { try { s.addImage({ data: meta.logo, x: 0.5, y: 0.45, w: 0.8, h: 0.8 }); } catch {} }
+        s.addText("proforma", { x: 8, y: 0.55, w: 4.6, h: 0.8, fontSize: 40, bold: true, color: "FFFFFF", align: "right" });
+        s.addText("CUSTOMER", { x: 0.4, y: 1.55, w: 3, h: 0.2, fontSize: 8, color: "888888" });
+        s.addText("DATE", { x: 9.6, y: 1.55, w: 3, h: 0.2, fontSize: 8, color: "888888", align: "right" });
+        s.addText(meta.customer || "—", { x: 0.4, y: 1.72, w: 6, h: 0.3, fontSize: 14, bold: true, color: "222222" });
+        s.addText(fmtDate(meta.date), { x: 7, y: 1.72, w: 5.6, h: 0.3, fontSize: 14, bold: true, color: "222222", align: "right" });
+        tY = 2.25;
+      } else {
+        // Minimal slim header for continuation
+        s.addShape("rect", { x: 0.3, y: 0.25, w: 12.73, h: 0.5, fill: { color: ac }, line: { color: ac } });
+        s.addText(`${meta.title} — ${meta.customer || ""}`, { x: 0.4, y: 0.27, w: 9, h: 0.45, fontSize: 14, bold: true, color: "FFFFFF", valign: "middle" });
+        s.addText(`${p + 1} / ${pages}`, { x: 10, y: 0.27, w: 3, h: 0.45, fontSize: 11, color: "FFFFFF", align: "right", valign: "middle" });
+        tY = 0.95;
+      }
       const headerRow = head.map((h) => ({ text: h, options: { bold: true, color: "FFFFFF", fill: { color: ac }, align: "center", valign: "middle", fontSize: 9 } }));
-      const slice = rows.slice(p*perSlide, (p+1)*perSlide);
+      const slice = chunks[p];
       const tr: PptxGenJS.TableRow[] = [headerRow as unknown as PptxGenJS.TableRow];
       slice.forEach((r, idx) => {
-        const gi = p*perSlide + idx + 1;
+        const gi = runningIndex + idx + 1;
         tr.push([
           { text: String(gi), options: { align: "center", valign: "middle" } },
           { text: r.itemName, options: { valign: "middle" } },
@@ -367,7 +402,7 @@ export default function ProformaApp() {
           { text: r.weight, options: { align: "center" } }, { text: String(tWeight(r) || ""), options: { align: "center" } },
         ] as unknown as PptxGenJS.TableRow);
       });
-      const tY = 2.25; const rowH = 0.7;
+      const rowH = 0.7;
       s.addTable(tr, { x: 0.3, y: tY, w: 12.73, rowH, fontSize: 8.5, border: { type: "solid", pt: 0.5, color: "E5E7EB" }, valign: "middle", colW });
       const overlay = (oc: number, src: string, ri: number) => {
         if (!src) return; let x = 0.3; for (let i = 0; i < oc; i++) x += colW[i];
@@ -375,7 +410,8 @@ export default function ProformaApp() {
         const cx = x + (cw-size)/2; try { s.addImage({ data: src, x: cx, y, w: size, h: size }); } catch {}
       };
       slice.forEach((r, idx) => { overlay(3, r.image, idx); overlay(4, r.packing, idx); });
-      if (p === pages-1) {
+      runningIndex += slice.length;
+      if (isLast) {
         const cY = tY + rowH + slice.length*rowH + 0.25;
         s.addText(`• ${meta.notes}`, { x: 0.3, y: cY-0.05, w: 12.73, h: 0.3, fontSize: 11, bold: true, color: "222222", align: "right" });
         const cards = [
@@ -390,11 +426,12 @@ export default function ProformaApp() {
           s.addText(c.v, { x: cx, y: cY+0.55, w: cw, h: 0.6, fontSize: 18, bold: true, color: "222222", align: "center", valign: "middle" });
           cx += cw + gap;
         });
+        // Footer (company contact) — only on last slide
+        s.addShape("roundRect", { x: 0.3, y: 6.8, w: 12.73, h: 0.65, fill: { color: ac }, line: { color: ac }, rectRadius: 0.08 });
+        s.addText(meta.address, { x: 0.4, y: 6.82, w: 12.5, h: 0.22, fontSize: 9, color: "FFFFFF", align: "center" });
+        s.addText(`tel: ${meta.phone}`, { x: 0.4, y: 7.02, w: 12.5, h: 0.18, fontSize: 8, color: "FFFFFF", align: "center" });
+        s.addText(`E-MAIL: ${meta.email}`, { x: 0.4, y: 7.2, w: 12.5, h: 0.18, fontSize: 8, color: "FFFFFF", align: "center" });
       }
-      s.addShape("roundRect", { x: 0.3, y: 6.8, w: 12.73, h: 0.65, fill: { color: ac }, line: { color: ac }, rectRadius: 0.08 });
-      s.addText(meta.address, { x: 0.4, y: 6.82, w: 12.5, h: 0.22, fontSize: 9, color: "FFFFFF", align: "center" });
-      s.addText(`tel: ${meta.phone}`, { x: 0.4, y: 7.02, w: 12.5, h: 0.18, fontSize: 8, color: "FFFFFF", align: "center" });
-      s.addText(`E-MAIL: ${meta.email}`, { x: 0.4, y: 7.2, w: 12.5, h: 0.18, fontSize: 8, color: "FFFFFF", align: "center" });
     }
     await pptx.writeFile({ fileName: `${meta.title || "proforma"}-${meta.customer || "customer"}.pptx` });
     toast.success("PPTX ✓");
