@@ -603,9 +603,13 @@ export default function ProformaApp() {
         #printable.pdf-capture .cell-text { display: block !important; }
         #printable.pdf-capture .img-cell-btn { border-color: transparent !important; background: transparent !important; }
         #printable.pdf-capture input { border: none !important; background: transparent !important; box-shadow: none !important; }
-        #printable.pdf-capture table { table-layout: auto !important; }
-        #printable.pdf-capture table { min-width: 0 !important; }
-        #printable.pdf-capture td, #printable.pdf-capture th { word-break: break-word; white-space: normal !important; }
+        #printable.pdf-capture { width: 1600px !important; }
+        #printable.pdf-capture .overflow-x-auto { overflow: visible !important; }
+        #printable.pdf-capture table { table-layout: auto !important; min-width: 100% !important; width: 100% !important; }
+        #printable.pdf-capture td { word-break: break-word; white-space: normal !important; vertical-align: middle !important; }
+        #printable.pdf-capture th { white-space: nowrap !important; padding: 6px 4px !important; font-size: 10px !important; }
+        #printable.pdf-capture .img-cell-btn { width: 70px !important; height: 70px !important; }
+        #printable.pdf-capture .img-cell-btn img { object-fit: contain !important; }
         @media print {
           html, body { background: white !important; }
           body { margin: 0 !important; }
