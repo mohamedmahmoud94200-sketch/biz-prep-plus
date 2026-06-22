@@ -337,8 +337,8 @@ export default function ProformaApp() {
     const pptx = new PptxGenJS(); pptx.layout = "LAYOUT_WIDE"; pptx.title = meta.title;
     const ac = themeColor;
     const perSlideFirst = 5; // header takes vertical space
-    const perSlideMid = 8;
-    const perSlideLast = 5; // totals + footer take space
+    const perSlideMid = 7;
+    const perSlideLast = 4; // totals + footer take space
     // Distribute rows across slides
     const chunks: Row[][] = [];
     let remaining = [...rows];
