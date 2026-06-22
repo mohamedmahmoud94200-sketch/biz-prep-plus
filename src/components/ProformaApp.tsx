@@ -358,7 +358,8 @@ export default function ProformaApp() {
       if (tail.length) chunks.push(tail);
     }
     const pages = chunks.length;
-    const colW = [0.35,1.1,1.4,0.9,0.9,0.55,0.65,0.65,0.6,0.8,0.85,0.55,0.65,0.6,0.7];
+    // Column widths must sum to table width (12.73)
+    const colW = [0.40,1.24,1.58,1.02,1.02,0.62,0.74,0.74,0.68,0.91,0.96,0.62,0.74,0.68,0.79];
     const head = ["No","Item Name","Description","Image","Packing","Ctn","Doz/Ctn","Set/Ctn","Pcs/Set","Price/Set","T.Amount","CBM","T.CBM","Weight","T.Weight"];
     let runningIndex = 0;
     for (let p = 0; p < pages; p++) {
@@ -402,12 +403,15 @@ export default function ProformaApp() {
           { text: r.weight, options: { align: "center" } }, { text: String(tWeight(r) || ""), options: { align: "center" } },
         ] as unknown as PptxGenJS.TableRow);
       });
-      const rowH = 0.7;
+      const rowH = 0.75;
       s.addTable(tr, { x: 0.3, y: tY, w: 12.73, rowH, fontSize: 8.5, border: { type: "solid", pt: 0.5, color: "E5E7EB" }, valign: "middle", colW });
       const overlay = (oc: number, src: string, ri: number) => {
         if (!src) return; let x = 0.3; for (let i = 0; i < oc; i++) x += colW[i];
-        const cw = colW[oc]; const y = tY + rowH + ri*rowH + 0.04; const size = rowH - 0.1;
-        const cx = x + (cw-size)/2; try { s.addImage({ data: src, x: cx, y, w: size, h: size }); } catch {}
+        const cw = colW[oc]; const y = tY + rowH + ri*rowH + 0.04; const size = rowH - 0.12;
+        const cx = x + (cw-size)/2;
+        try {
+          s.addImage({ data: src, x: cx, y, w: size, h: size, sizing: { type: "contain", w: size, h: size } });
+        } catch {}
       };
       slice.forEach((r, idx) => { overlay(3, r.image, idx); overlay(4, r.packing, idx); });
       runningIndex += slice.length;
