@@ -663,7 +663,7 @@ function ImgCell({ src, onPick, icon }: { src: string; onPick: (f: File | null) 
   return (
     <>
       <button type="button" onClick={() => ref.current?.click()} className={`img-cell-btn mx-auto flex h-14 w-14 items-center justify-center overflow-hidden rounded border ${src ? "" : "border-dashed bg-muted/30"} hover:border-foreground`}>
-        {src ? <img src={src} alt="" className="h-full w-full object-cover" /> : icon === "img" ? <ImageIcon className="h-4 w-4 text-muted-foreground" /> : <Package className="h-4 w-4 text-muted-foreground" />}
+        {src ? <img src={src} alt="" className="h-full w-full object-contain" /> : icon === "img" ? <ImageIcon className="h-4 w-4 text-muted-foreground" /> : <Package className="h-4 w-4 text-muted-foreground" />}
       </button>
       <input ref={ref} type="file" accept="image/*" className="hidden" onChange={(e) => onPick(e.target.files?.[0] ?? null)} />
     </>
