@@ -134,6 +134,7 @@ export default function ProformaApp() {
         meta: { ...defaultMeta(), ...(d.meta ?? {}) },
         rows: (d.rows ?? [newRow()]).map((x) => ({ ...newRow(), ...x })),
         themeColor: d.themeColor ?? "2BB39B",
+        isPrimary: d.isPrimary ?? false,
       };
     });
     setProformas(list);
@@ -174,7 +175,7 @@ export default function ProformaApp() {
     for (const p of targets) {
       const { error } = await supabase.from("proformas").upsert({
         id: p.id, name: p.name, sort_order: p.sortOrder,
-        data: { meta: p.meta, rows: p.rows, themeColor: p.themeColor },
+        data: { meta: p.meta, rows: p.rows, themeColor: p.themeColor, isPrimary: !!p.isPrimary },
       });
       if (error) { console.error(error); toast.error("فشل الحفظ / Save failed"); setSaveState("idle"); return; }
     }
@@ -201,7 +202,7 @@ export default function ProformaApp() {
   const createProforma = async () => {
     const p = newProforma(lang === "ar" ? `بروفورما ${proformas.length+1}` : `Proforma ${proformas.length+1}`, proformas.length);
     if (active) { p.meta = { ...active.meta, customer: "", date: new Date().toISOString().slice(0,10) }; p.themeColor = active.themeColor; }
-    const { error } = await supabase.from("proformas").insert({ id: p.id, name: p.name, sort_order: p.sortOrder, data: { meta: p.meta, rows: p.rows, themeColor: p.themeColor } });
+    const { error } = await supabase.from("proformas").insert({ id: p.id, name: p.name, sort_order: p.sortOrder, data: { meta: p.meta, rows: p.rows, themeColor: p.themeColor, isPrimary: false } });
     if (error) { toast.error("فشل الإنشاء"); return; }
     setProformas((ps) => [...ps, p]); setActiveId(p.id);
     toast.success(lang === "ar" ? "تم الإنشاء" : "Created");
@@ -219,6 +220,12 @@ export default function ProformaApp() {
     if (!n) return;
     setProformas((ps) => ps.map((p) => (p.id === id ? { ...p, name: n } : p)));
     markDirty(id);
+  };
+
+  const togglePrimary = (id: string) => {
+    setProformas((ps) => ps.map((p) => ({ ...p, isPrimary: p.id === id ? !p.isPrimary : false })));
+    proformas.forEach((p) => markDirty(p.id));
+    setTimeout(() => flushSave(), 50);
   };
 
   const totals = useMemo(() => {
@@ -254,7 +261,9 @@ export default function ProformaApp() {
 
   const library = useMemo(() => {
     const seen = new Set<string>(); const items: { row: Row; from: string }[] = [];
-    proformas.forEach((p) => p.rows.forEach((r) => {
+    const primary = proformas.find((p) => p.isPrimary);
+    const sources = primary ? [primary] : proformas;
+    sources.forEach((p) => p.rows.forEach((r) => {
       if (!r.itemName && !r.image) return;
       const key = `${r.itemName}|${r.image.slice(0, 60)}`;
       if (seen.has(key)) return; seen.add(key); items.push({ row: r, from: p.name });
