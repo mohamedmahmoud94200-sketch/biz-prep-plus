@@ -526,11 +526,13 @@ export default function ProformaApp() {
           <div className="grid grid-cols-2 gap-8 border-b px-6 pt-5 pb-3">
             <div>
               <div className="text-[11px] tracking-wider text-muted-foreground">{t.customer}</div>
-              <Input value={meta.customer} onChange={(e) => setMeta({ ...meta, customer: e.target.value })} className="mt-1 h-9 rounded-md border border-input bg-white px-2 text-base font-bold uppercase shadow-sm focus-visible:ring-2 print:border-b-2 print:border-l-0 print:border-r-0 print:border-t-0 print:rounded-none print:shadow-none print:px-0" style={{ borderColor: accent }} placeholder={t.customer} />
+              <Input value={meta.customer} onChange={(e) => setMeta({ ...meta, customer: e.target.value })} className="meta-input mt-1 h-9 rounded-md border border-input bg-white px-2 text-base font-bold shadow-sm focus-visible:ring-2 print:border-b-2 print:border-l-0 print:border-r-0 print:border-t-0 print:rounded-none print:shadow-none print:px-0" style={{ borderColor: accent }} placeholder={t.customer} />
+              <div className="meta-text hidden mt-1 px-2 text-base font-bold leading-9" style={{ color: "#111" }}>{meta.customer || "\u00A0"}</div>
             </div>
             <div className="text-end">
               <div className="text-[11px] tracking-wider text-muted-foreground">{t.date}</div>
-              <Input type="date" value={meta.date} onChange={(e) => setMeta({ ...meta, date: e.target.value })} className="mt-1 h-9 rounded-md border border-input bg-white px-2 text-end text-base font-bold shadow-sm focus-visible:ring-2 print:border-b-2 print:border-l-0 print:border-r-0 print:border-t-0 print:rounded-none print:shadow-none print:px-0" style={{ borderColor: accent }} />
+              <Input type="date" value={meta.date} onChange={(e) => setMeta({ ...meta, date: e.target.value })} className="meta-input mt-1 h-9 rounded-md border border-input bg-white px-2 text-end text-base font-bold shadow-sm focus-visible:ring-2 print:border-b-2 print:border-l-0 print:border-r-0 print:border-t-0 print:rounded-none print:shadow-none print:px-0" style={{ borderColor: accent }} />
+              <div className="meta-text hidden mt-1 px-2 text-end text-base font-bold leading-9" style={{ color: "#111" }}>{fmtDate(meta.date) || "\u00A0"}</div>
             </div>
           </div>
           {/* TABLE */}
@@ -618,6 +620,8 @@ export default function ProformaApp() {
         #printable.pdf-capture .cell-text { font-size: 11px !important; line-height: 1.25 !important; }
         #printable.pdf-capture .img-cell-btn { width: 70px !important; height: 70px !important; }
         #printable.pdf-capture .img-cell-btn img { object-fit: contain !important; }
+        #printable.pdf-capture .meta-input { display: none !important; }
+        #printable.pdf-capture .meta-text { display: block !important; }
         @media print {
           html, body { background: white !important; }
           body { margin: 0 !important; }
@@ -700,9 +704,9 @@ function RowEditor({ index, row, accent, lang, onChange, onImage, onPacking, onD
       <td className="w-14 px-1"><CellInput value={row.pcsSet} onChange={(v) => onChange({ pcsSet: v })} /></td>
       <td className="w-16 px-1"><CellInput value={row.pricePerCtn} onChange={(v) => onChange({ pricePerCtn: v })} type="number" /></td>
       <td className="w-16 px-1 text-center text-[12px] font-bold" style={{ color: accent }}>{amt || ""}</td>
-      <td className="w-20 px-1"><CellInput value={row.cbm} onChange={(v) => onChange({ cbm: v })} type="number" /></td>
+      <td className="w-16 px-1"><CellInput value={row.cbm} onChange={(v) => onChange({ cbm: v })} type="number" /></td>
       <td className="w-16 px-1 text-center text-[12px] font-semibold">{tc || ""}</td>
-      <td className="w-20 px-1"><CellInput value={row.weight} onChange={(v) => onChange({ weight: v })} type="number" /></td>
+      <td className="w-16 px-1"><CellInput value={row.weight} onChange={(v) => onChange({ weight: v })} type="number" /></td>
       <td className="w-16 px-1 text-center text-[12px] font-semibold">{tw || ""}</td>
       <td className="w-24 px-1 print:hidden">
         <div className="flex justify-center gap-1">
