@@ -620,6 +620,8 @@ export default function ProformaApp() {
         #printable.pdf-capture .cell-text { font-size: 11px !important; line-height: 1.25 !important; }
         #printable.pdf-capture .img-cell-btn { width: 70px !important; height: 70px !important; }
         #printable.pdf-capture .img-cell-btn img { object-fit: contain !important; }
+        #printable.pdf-capture .meta-input { display: none !important; }
+        #printable.pdf-capture .meta-text { display: block !important; }
         @media print {
           html, body { background: white !important; }
           body { margin: 0 !important; }
