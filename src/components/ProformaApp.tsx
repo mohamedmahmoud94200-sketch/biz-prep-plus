@@ -704,10 +704,10 @@ function RowEditor({ index, row, accent, lang, onChange, onImage, onPacking, onD
       <td className="w-14 px-1"><CellInput value={row.pcsSet} onChange={(v) => onChange({ pcsSet: v })} /></td>
       <td className="w-16 px-1"><CellInput value={row.pricePerCtn} onChange={(v) => onChange({ pricePerCtn: v })} type="number" /></td>
       <td className="w-16 px-1 text-center text-[12px] font-bold" style={{ color: accent }}>{amt || ""}</td>
-      <td className="w-16 px-1"><CellInput value={row.cbm} onChange={(v) => onChange({ cbm: v })} type="number" /></td>
-      <td className="w-16 px-1 text-center text-[12px] font-semibold">{tc || ""}</td>
-      <td className="w-16 px-1"><CellInput value={row.weight} onChange={(v) => onChange({ weight: v })} type="number" /></td>
-      <td className="w-16 px-1 text-center text-[12px] font-semibold">{tw || ""}</td>
+      <td className="w-24 px-1"><CellInput value={row.cbm} onChange={(v) => onChange({ cbm: v })} type="number" /></td>
+      <td className="w-24 px-1 text-center text-[12px] font-semibold">{tc || ""}</td>
+      <td className="w-24 px-1"><CellInput value={row.weight} onChange={(v) => onChange({ weight: v })} type="number" /></td>
+      <td className="w-24 px-1 text-center text-[12px] font-semibold">{tw || ""}</td>
       <td className="w-24 px-1 print:hidden">
         <div className="flex justify-center gap-1">
           <button onClick={onSend} title={tt.sendTo} className="rounded p-1 hover:bg-muted" style={{ color: accent }}><Send className="h-3.5 w-3.5" /></button>
