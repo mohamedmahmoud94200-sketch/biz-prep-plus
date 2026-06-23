@@ -526,11 +526,13 @@ export default function ProformaApp() {
           <div className="grid grid-cols-2 gap-8 border-b px-6 pt-5 pb-3">
             <div>
               <div className="text-[11px] tracking-wider text-muted-foreground">{t.customer}</div>
-              <Input value={meta.customer} onChange={(e) => setMeta({ ...meta, customer: e.target.value })} className="mt-1 h-9 rounded-md border border-input bg-white px-2 text-base font-bold uppercase shadow-sm focus-visible:ring-2 print:border-b-2 print:border-l-0 print:border-r-0 print:border-t-0 print:rounded-none print:shadow-none print:px-0" style={{ borderColor: accent }} placeholder={t.customer} />
+              <Input value={meta.customer} onChange={(e) => setMeta({ ...meta, customer: e.target.value })} className="meta-input mt-1 h-9 rounded-md border border-input bg-white px-2 text-base font-bold shadow-sm focus-visible:ring-2 print:border-b-2 print:border-l-0 print:border-r-0 print:border-t-0 print:rounded-none print:shadow-none print:px-0" style={{ borderColor: accent }} placeholder={t.customer} />
+              <div className="meta-text hidden mt-1 px-2 text-base font-bold leading-9" style={{ color: "#111" }}>{meta.customer || "\u00A0"}</div>
             </div>
             <div className="text-end">
               <div className="text-[11px] tracking-wider text-muted-foreground">{t.date}</div>
-              <Input type="date" value={meta.date} onChange={(e) => setMeta({ ...meta, date: e.target.value })} className="mt-1 h-9 rounded-md border border-input bg-white px-2 text-end text-base font-bold shadow-sm focus-visible:ring-2 print:border-b-2 print:border-l-0 print:border-r-0 print:border-t-0 print:rounded-none print:shadow-none print:px-0" style={{ borderColor: accent }} />
+              <Input type="date" value={meta.date} onChange={(e) => setMeta({ ...meta, date: e.target.value })} className="meta-input mt-1 h-9 rounded-md border border-input bg-white px-2 text-end text-base font-bold shadow-sm focus-visible:ring-2 print:border-b-2 print:border-l-0 print:border-r-0 print:border-t-0 print:rounded-none print:shadow-none print:px-0" style={{ borderColor: accent }} />
+              <div className="meta-text hidden mt-1 px-2 text-end text-base font-bold leading-9" style={{ color: "#111" }}>{fmtDate(meta.date) || "\u00A0"}</div>
             </div>
           </div>
           {/* TABLE */}
