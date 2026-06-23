@@ -610,8 +610,12 @@ export default function ProformaApp() {
         #printable.pdf-capture { width: 1600px !important; }
         #printable.pdf-capture .overflow-x-auto { overflow: visible !important; }
         #printable.pdf-capture table { table-layout: auto !important; min-width: 100% !important; width: 100% !important; }
-        #printable.pdf-capture td { word-break: break-word; white-space: normal !important; vertical-align: middle !important; }
+        #printable.pdf-capture td { word-break: break-word; white-space: normal !important; vertical-align: middle !important; padding: 4px 3px !important; }
         #printable.pdf-capture th { white-space: nowrap !important; padding: 6px 4px !important; font-size: 10px !important; }
+        /* Cap Item Name / Description so they don't dominate */
+        #printable.pdf-capture th:nth-child(2), #printable.pdf-capture td:nth-child(2) { max-width: 180px !important; width: 180px !important; }
+        #printable.pdf-capture th:nth-child(3), #printable.pdf-capture td:nth-child(3) { max-width: 220px !important; width: 220px !important; }
+        #printable.pdf-capture .cell-text { font-size: 11px !important; line-height: 1.25 !important; }
         #printable.pdf-capture .img-cell-btn { width: 70px !important; height: 70px !important; }
         #printable.pdf-capture .img-cell-btn img { object-fit: contain !important; }
         @media print {
