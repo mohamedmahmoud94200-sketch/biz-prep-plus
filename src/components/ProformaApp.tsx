@@ -391,16 +391,16 @@ export default function ProformaApp() {
       slice.forEach((r, idx) => {
         const gi = runningIndex + idx + 1;
         tr.push([
-          { text: String(gi), options: { align: "center", valign: "middle" } },
+          { text: String(gi), options: { align: "center", valign: "middle", bold: true } },
           { text: r.itemName, options: { valign: "middle" } },
           { text: r.description, options: { valign: "middle" } },
           { text: "" }, { text: "" },
-          { text: r.ctn, options: { align: "center" } }, { text: r.dozCtn, options: { align: "center" } },
-          { text: r.setCtn, options: { align: "center" } }, { text: r.pcsSet, options: { align: "center" } },
-          { text: r.pricePerCtn, options: { align: "center" } },
+          { text: r.ctn, options: { align: "center", bold: true } }, { text: r.dozCtn, options: { align: "center", bold: true } },
+          { text: r.setCtn, options: { align: "center", bold: true } }, { text: r.pcsSet, options: { align: "center", bold: true } },
+          { text: r.pricePerCtn, options: { align: "center", bold: true } },
           { text: String(amount(r) || ""), options: { align: "center", bold: true } },
-          { text: r.cbm, options: { align: "center" } }, { text: String(tCbm(r) || ""), options: { align: "center" } },
-          { text: r.weight, options: { align: "center" } }, { text: String(tWeight(r) || ""), options: { align: "center" } },
+          { text: r.cbm, options: { align: "center", bold: true } }, { text: String(tCbm(r) || ""), options: { align: "center", bold: true } },
+          { text: r.weight, options: { align: "center", bold: true } }, { text: String(tWeight(r) || ""), options: { align: "center", bold: true } },
         ] as unknown as PptxGenJS.TableRow);
       });
       const rowH = 0.75;
@@ -696,10 +696,10 @@ function RowEditor({ index, row, accent, lang, onChange, onImage, onPacking, onD
       <td className="w-14 px-1"><CellInput value={row.pcsSet} onChange={(v) => onChange({ pcsSet: v })} /></td>
       <td className="w-16 px-1"><CellInput value={row.pricePerCtn} onChange={(v) => onChange({ pricePerCtn: v })} type="number" /></td>
       <td className="w-16 px-1 text-center text-[12px] font-bold" style={{ color: accent }}>{amt || ""}</td>
-      <td className="w-14 px-1"><CellInput value={row.cbm} onChange={(v) => onChange({ cbm: v })} type="number" /></td>
-      <td className="w-14 px-1 text-center text-[12px] font-semibold">{tc || ""}</td>
-      <td className="w-14 px-1"><CellInput value={row.weight} onChange={(v) => onChange({ weight: v })} type="number" /></td>
-      <td className="w-14 px-1 text-center text-[12px] font-semibold">{tw || ""}</td>
+      <td className="w-20 px-1"><CellInput value={row.cbm} onChange={(v) => onChange({ cbm: v })} type="number" /></td>
+      <td className="w-16 px-1 text-center text-[12px] font-semibold">{tc || ""}</td>
+      <td className="w-20 px-1"><CellInput value={row.weight} onChange={(v) => onChange({ weight: v })} type="number" /></td>
+      <td className="w-16 px-1 text-center text-[12px] font-semibold">{tw || ""}</td>
       <td className="w-24 px-1 print:hidden">
         <div className="flex justify-center gap-1">
           <button onClick={onSend} title={tt.sendTo} className="rounded p-1 hover:bg-muted" style={{ color: accent }}><Send className="h-3.5 w-3.5" /></button>
