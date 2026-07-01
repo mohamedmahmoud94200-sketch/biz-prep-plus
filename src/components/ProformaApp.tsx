@@ -212,13 +212,16 @@ export default function ProformaApp() {
   }, []);
 
   const updateActive = (patch: Partial<Proforma>) => {
-    if (!active) return;
-    setProformas((ps) => ps.map((p) => (p.id === active.id ? { ...p, ...patch } : p)));
-    markDirty(active.id);
+    if (!activeId) return;
+    setProformas((ps) => ps.map((p) => (p.id === activeId ? { ...p, ...patch } : p)));
+    markDirty(activeId);
   };
   const setMeta = (m: Meta) => updateActive({ meta: m });
-  const setRows = (u: Row[] | ((rs: Row[]) => Row[])) =>
-    updateActive({ rows: typeof u === "function" ? (u as (r: Row[]) => Row[])(rows) : u });
+  const setRows = (u: Row[] | ((rs: Row[]) => Row[])) => {
+    if (!activeId) return;
+    setProformas((ps) => ps.map((p) => (p.id === activeId ? { ...p, rows: typeof u === "function" ? (u as (r: Row[]) => Row[])(p.rows) : u } : p)));
+    markDirty(activeId);
+  };
   const setThemeColor = (c: string) => updateActive({ themeColor: c.replace("#","") });
 
   /* ----- proforma management ----- */
@@ -679,6 +682,13 @@ export default function ProformaApp() {
         #printable.pdf-capture .img-cell-btn img { object-fit: contain !important; }
         #printable.pdf-capture .meta-input { display: none !important; }
         #printable.pdf-capture .meta-text { display: block !important; }
+        #printable.pdf-capture .footer-input { display: none !important; }
+        #printable.pdf-capture .footer-text { display: block !important; color: #ffffff !important; }
+        #printable.pdf-capture.invoice-capture th:nth-child(n+12),
+        #printable.pdf-capture.invoice-capture td:nth-child(n+12) { display: none !important; }
+        input[type="number"]::-webkit-outer-spin-button,
+        input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+        input[type="number"] { -moz-appearance: textfield; }
         @media print {
           html, body { background: white !important; }
           body { margin: 0 !important; }
@@ -691,6 +701,8 @@ export default function ProformaApp() {
           #printable .img-cell-btn { border-color: transparent !important; background: transparent !important; }
           #printable th:last-child, #printable td:last-child { display: none !important; }
           #printable input { border: none !important; background: transparent !important; padding: 0 !important; box-shadow: none !important; }
+          #printable .footer-input { display: none !important; }
+          #printable .footer-text { display: block !important; color: #ffffff !important; }
           #printable, #printable * {
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
