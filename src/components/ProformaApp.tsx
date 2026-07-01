@@ -227,7 +227,9 @@ export default function ProformaApp() {
     if (active) { p.meta = { ...active.meta, customer: "", date: new Date().toISOString().slice(0,10) }; p.themeColor = active.themeColor; }
     const { error } = await supabase.from("proformas").insert({ id: p.id, name: p.name, sort_order: p.sortOrder, data: { meta: p.meta, rows: p.rows, themeColor: p.themeColor, isPrimary: false } });
     if (error) { toast.error("فشل الإنشاء"); return; }
-    setProformas((ps) => [...ps, p]); setActiveId(p.id);
+    const next = [...proformas, p];
+    setProformas(next); setActiveId(p.id);
+    try { localStorage.setItem(CACHE_KEY, JSON.stringify(next)); } catch {}
     toast.success(lang === "ar" ? "تم الإنشاء" : "Created");
   };
   const deleteProforma = async (id: string) => {
@@ -235,6 +237,7 @@ export default function ProformaApp() {
     if (!confirm(lang === "ar" ? "تأكيد الحذف؟" : "Delete this proforma?")) return;
     await supabase.from("proformas").delete().eq("id", id);
     const next = proformas.filter((p) => p.id !== id);
+    try { localStorage.setItem(CACHE_KEY, JSON.stringify(next)); } catch {}
     setProformas(next); if (activeId === id) setActiveId(next[0]?.id ?? "");
   };
   const renameProforma = (id: string) => {
@@ -471,8 +474,7 @@ export default function ProformaApp() {
           { l: "T.Ctn", v: String(totals.tCtn) }, { l: "T.CBM", v: totals.tCBM.toFixed(2) },
           { l: "T.Weight", v: totals.tWt.toFixed(2) }, { l: "T.Amount", v: String(totals.tAmount) },
         ];
-        const cw = 2.0, ch = 0.95, gap = 0.15; let cx = 13.03 - (cw*4 + gap*3);
-        cx = 13.03 - (cw*cards.length + gap*(cards.length - 1));
+        const cw = 2.0, ch = 0.95, gap = 0.15; let cx = 13.03 - (cw*cards.length + gap*(cards.length - 1));
         cards.forEach((c) => {
           s.addShape("roundRect", { x: cx, y: cY+0.25, w: cw, h: ch, fill: { color: "FFFFFF" }, line: { color: ac, width: 1 }, rectRadius: 0.05 });
           s.addShape("rect", { x: cx+0.02, y: cY+0.27, w: cw-0.04, h: 0.28, fill: { color: ac }, line: { color: ac } });
@@ -522,8 +524,9 @@ export default function ProformaApp() {
             </Button>
             <Button size="sm" variant="outline" onClick={onSaveNow}><Save className="mr-1 h-4 w-4" /> {t.save}</Button>
             <Button size="sm" variant="outline" onClick={onPrint}><Printer className="mr-1 h-4 w-4" /> {t.print}</Button>
-            <Button size="sm" onClick={exportPDF} className="bg-sky-600 text-white hover:bg-sky-700"><FileDown className="mr-1 h-4 w-4" /> {t.pdf}</Button>
-            <Button size="sm" onClick={exportPPTX} className="bg-orange-500 text-white hover:bg-orange-600"><Presentation className="mr-1 h-4 w-4" /> {t.pptx}</Button>
+            <Button size="sm" onClick={() => exportPDF()} className="bg-sky-600 text-white hover:bg-sky-700"><FileDown className="mr-1 h-4 w-4" /> {t.pdf}</Button>
+            <Button size="sm" onClick={() => exportPPTX()} className="bg-orange-500 text-white hover:bg-orange-600"><Presentation className="mr-1 h-4 w-4" /> {t.pptx}</Button>
+            <Button size="sm" variant="outline" onClick={() => setShowInvoice(true)}><FileText className="mr-1 h-4 w-4" /> {t.createInvoice}</Button>
             <Button size="sm" onClick={createProforma} className="bg-purple-600 text-white hover:bg-purple-700"><FilePlus className="mr-1 h-4 w-4" /> {t.newInvoice}</Button>
             <Button size="sm" onClick={addRow} className="text-white hover:opacity-90" style={{ background: accent }}><Plus className="mr-1 h-4 w-4" /> {t.addItem}</Button>
             <Button size="sm" variant="outline" onClick={() => setShowLibrary(true)}><Library className="mr-1 h-4 w-4" /> {t.library}</Button>
@@ -629,16 +632,20 @@ export default function ProformaApp() {
             ))}
           </div>
           {/* Footer */}
-          <div className="px-6 pt-3 pb-1 text-center text-white" style={{ background: accent }}>
-            <Input value={meta.address} onChange={(e) => setMeta({ ...meta, address: e.target.value })} className="mx-auto h-7 max-w-3xl border-0 bg-transparent text-center text-[12px] font-medium text-white placeholder:text-white/70 shadow-none focus-visible:ring-0" />
-            <Input value={meta.phone} onChange={(e) => setMeta({ ...meta, phone: e.target.value })} className="mx-auto h-7 max-w-md border-0 bg-transparent text-center text-[11px] text-white shadow-none focus-visible:ring-0" />
-            <Input value={meta.email} onChange={(e) => setMeta({ ...meta, email: e.target.value })} className="mx-auto h-7 max-w-xl border-0 bg-transparent text-center text-[11px] text-white shadow-none focus-visible:ring-0" />
+          <div className="footer-block px-6 py-3 text-center text-white" style={{ background: accent }}>
+            <Input value={meta.address} onChange={(e) => setMeta({ ...meta, address: e.target.value })} className="footer-input mx-auto h-7 max-w-3xl border-0 bg-transparent text-center text-[12px] font-medium text-white placeholder:text-white/70 shadow-none focus-visible:ring-0" />
+            <div className="footer-text hidden text-[12px] font-medium leading-5">{meta.address || "\u00A0"}</div>
+            <Input value={meta.phone} onChange={(e) => setMeta({ ...meta, phone: e.target.value })} className="footer-input mx-auto h-7 max-w-md border-0 bg-transparent text-center text-[11px] text-white shadow-none focus-visible:ring-0" />
+            <div className="footer-text hidden text-[11px] leading-5">{meta.phone || "\u00A0"}</div>
+            <Input value={meta.email} onChange={(e) => setMeta({ ...meta, email: e.target.value })} className="footer-input mx-auto h-7 max-w-xl border-0 bg-transparent text-center text-[11px] text-white shadow-none focus-visible:ring-0" />
+            <div className="footer-text hidden text-[11px] leading-5">{meta.email || "\u00A0"}</div>
           </div>
         </div>
         <p className="mt-4 text-center text-xs text-muted-foreground print:hidden">{t.arabicTip}</p>
       </main>
 
       {showLibrary && <LibraryModal items={library} accent={accent} lang={lang} onPick={(r) => { copyFromLibrary(r); }} onClose={() => setShowLibrary(false)} />}
+      {showInvoice && <InvoiceModal accent={accent} lang={lang} onCancel={() => setShowInvoice(false)} onPdf={async () => { setShowInvoice(false); await exportPDF(true); }} onPptx={async () => { setShowInvoice(false); await exportPPTX(true); }} />}
       {sendItem && (
         <SendToModal
           item={sendItem} accent={accent} lang={lang}
