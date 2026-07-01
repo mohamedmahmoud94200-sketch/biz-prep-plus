@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   Plus, Trash2, FileDown, Presentation, Copy, Library, FilePlus, Palette, X,
-  Package, Printer, ImageIcon, Send, Save, Languages, LogOut, Star,
+  Package, Printer, ImageIcon, Send, Save, Languages, LogOut, Star, FileText,
 } from "lucide-react";
 import { toast } from "sonner";
 import jsPDF from "jspdf";
@@ -27,10 +27,11 @@ type Proforma = {
 type Lang = "ar" | "en";
 
 const LANG_KEY = "proforma-lang";
+const CACHE_KEY = "proforma-cache-v2";
 
 const T = {
   ar: {
-    print: "طباعة", pdf: "PDF", pptx: "PowerPoint",
+    print: "طباعة", pdf: "PDF", pptx: "PowerPoint", createInvoice: "Create Invoice",
     newInvoice: "بروفورما جديدة", addItem: "إضافة منتج", library: "مكتبة المنتجات",
     theme: "اللون", save: "حفظ الآن", saved: "محفوظ ☁", saving: "جارى الحفظ…",
     lang: "EN", customer: "العميل", date: "التاريخ",
@@ -44,7 +45,7 @@ const T = {
     proforma: "بروفورما",
   },
   en: {
-    print: "Print", pdf: "PDF", pptx: "PowerPoint",
+    print: "Print", pdf: "PDF", pptx: "PowerPoint", createInvoice: "Create Invoice",
     newInvoice: "New Invoice", addItem: "Add Item", library: "Library",
     theme: "Theme", save: "Save Now", saved: "Saved ☁", saving: "Saving…",
     lang: "ع", customer: "CUSTOMER", date: "DATE",
@@ -116,7 +117,9 @@ export default function ProformaApp() {
   const [showLibrary, setShowLibrary] = useState(false);
   const [showThemes, setShowThemes] = useState(false);
   const [showCompany, setShowCompany] = useState(false);
+  const [showInvoice, setShowInvoice] = useState(false);
   const [saveState, setSaveState] = useState<"idle"|"saving"|"saved">("idle");
+  const [loadFailed, setLoadFailed] = useState(false);
   const [lang, setLang] = useState<Lang>(() => (typeof window !== "undefined" && (localStorage.getItem(LANG_KEY) as Lang)) || "ar");
   const [sendItem, setSendItem] = useState<Row | null>(null);
   const logoRef = useRef<HTMLInputElement>(null);
@@ -126,7 +129,7 @@ export default function ProformaApp() {
   /* ----- load ----- */
   const loadAll = useCallback(async () => {
     const { data, error } = await supabase.from("proformas").select("id, name, data, sort_order").order("sort_order").order("created_at");
-    if (error) { console.error(error); return; }
+    if (error) { console.error(error); setLoadFailed(true); return false; }
     const list: Proforma[] = (data ?? []).map((r) => {
       const d = (r.data ?? {}) as Partial<Proforma>;
       return {
@@ -138,25 +141,43 @@ export default function ProformaApp() {
       };
     });
     setProformas(list);
+    try { localStorage.setItem(CACHE_KEY, JSON.stringify(list)); } catch {}
+    setLoadFailed(false);
+    return true;
   }, []);
 
   useEffect(() => {
     (async () => {
-      await loadAll();
-      setLoaded(true);
+      try {
+        const cached = localStorage.getItem(CACHE_KEY);
+        if (cached) {
+          const list = JSON.parse(cached) as Proforma[];
+          if (Array.isArray(list) && list.length > 0) {
+            setProformas(list);
+            setLoaded(true);
+          }
+        }
+      } catch {}
+      const ok = await loadAll();
+      if (ok) setLoaded(true);
     })();
   }, [loadAll]);
 
+  useEffect(() => {
+    if (!loaded || proformas.length === 0) return;
+    try { localStorage.setItem(CACHE_KEY, JSON.stringify(proformas)); } catch {}
+  }, [loaded, proformas]);
+
   // ensure at least one + pick active
   useEffect(() => {
-    if (!loaded) return;
+    if (!loaded || loadFailed) return;
     if (proformas.length === 0) {
       const p = newProforma(lang === "ar" ? "بروفورما 1" : "Proforma 1", 0);
       supabase.from("proformas").insert({ id: p.id, name: p.name, sort_order: 0, data: { meta: p.meta, rows: p.rows, themeColor: p.themeColor } }).then(loadAll);
       return;
     }
     if (!activeId || !proformas.find((p) => p.id === activeId)) setActiveId(proformas[0].id);
-  }, [loaded, proformas, activeId, lang, loadAll]);
+  }, [loaded, loadFailed, proformas, activeId, lang, loadAll]);
 
   useEffect(() => { try { localStorage.setItem(LANG_KEY, lang); } catch {} }, [lang]);
 
@@ -172,16 +193,21 @@ export default function ProformaApp() {
     const ids = [...dirtyIds.current]; dirtyIds.current.clear();
     setSaveState("saving");
     const targets = proformas.filter((p) => ids.includes(p.id));
-    for (const p of targets) {
-      const { error } = await supabase.from("proformas").upsert({
+    const results = await Promise.all(targets.map((p) => supabase.from("proformas").upsert({
         id: p.id, name: p.name, sort_order: p.sortOrder,
         data: { meta: p.meta, rows: p.rows, themeColor: p.themeColor, isPrimary: !!p.isPrimary },
-      });
-      if (error) { console.error(error); toast.error("فشل الحفظ / Save failed"); setSaveState("idle"); return; }
-    }
+      })));
+    const failed = results.find((r) => r.error);
+    if (failed?.error) { console.error(failed.error); ids.forEach((id) => dirtyIds.current.add(id)); toast.error("فشل الحفظ / Save failed"); setSaveState("idle"); return; }
     setSaveState("saved");
     setTimeout(() => setSaveState((s) => (s === "saved" ? "idle" : s)), 1500);
   }, [proformas]);
+
+  useEffect(() => {
+    if (!loaded || dirtyIds.current.size === 0) return;
+    const timer = window.setTimeout(() => { void flushSave(); }, 900);
+    return () => window.clearTimeout(timer);
+  }, [loaded, proformas, flushSave]);
 
   const markDirty = useCallback((id: string) => {
     dirtyIds.current.add(id);
@@ -189,13 +215,18 @@ export default function ProformaApp() {
   }, []);
 
   const updateActive = (patch: Partial<Proforma>) => {
-    if (!active) return;
-    setProformas((ps) => ps.map((p) => (p.id === active.id ? { ...p, ...patch } : p)));
-    markDirty(active.id);
+    const targetId = activeId || active?.id;
+    if (!targetId) return;
+    setProformas((ps) => ps.map((p) => (p.id === targetId ? { ...p, ...patch } : p)));
+    markDirty(targetId);
   };
   const setMeta = (m: Meta) => updateActive({ meta: m });
-  const setRows = (u: Row[] | ((rs: Row[]) => Row[])) =>
-    updateActive({ rows: typeof u === "function" ? (u as (r: Row[]) => Row[])(rows) : u });
+  const setRows = (u: Row[] | ((rs: Row[]) => Row[])) => {
+    const targetId = activeId || active?.id;
+    if (!targetId) return;
+    setProformas((ps) => ps.map((p) => (p.id === targetId ? { ...p, rows: typeof u === "function" ? (u as (r: Row[]) => Row[])(p.rows) : u } : p)));
+    markDirty(targetId);
+  };
   const setThemeColor = (c: string) => updateActive({ themeColor: c.replace("#","") });
 
   /* ----- proforma management ----- */
@@ -204,7 +235,9 @@ export default function ProformaApp() {
     if (active) { p.meta = { ...active.meta, customer: "", date: new Date().toISOString().slice(0,10) }; p.themeColor = active.themeColor; }
     const { error } = await supabase.from("proformas").insert({ id: p.id, name: p.name, sort_order: p.sortOrder, data: { meta: p.meta, rows: p.rows, themeColor: p.themeColor, isPrimary: false } });
     if (error) { toast.error("فشل الإنشاء"); return; }
-    setProformas((ps) => [...ps, p]); setActiveId(p.id);
+    const next = [...proformas, p];
+    setProformas(next); setActiveId(p.id);
+    try { localStorage.setItem(CACHE_KEY, JSON.stringify(next)); } catch {}
     toast.success(lang === "ar" ? "تم الإنشاء" : "Created");
   };
   const deleteProforma = async (id: string) => {
@@ -212,6 +245,7 @@ export default function ProformaApp() {
     if (!confirm(lang === "ar" ? "تأكيد الحذف؟" : "Delete this proforma?")) return;
     await supabase.from("proformas").delete().eq("id", id);
     const next = proformas.filter((p) => p.id !== id);
+    try { localStorage.setItem(CACHE_KEY, JSON.stringify(next)); } catch {}
     setProformas(next); if (activeId === id) setActiveId(next[0]?.id ?? "");
   };
   const renameProforma = (id: string) => {
@@ -222,10 +256,20 @@ export default function ProformaApp() {
     markDirty(id);
   };
 
-  const togglePrimary = (id: string) => {
-    setProformas((ps) => ps.map((p) => ({ ...p, isPrimary: p.id === id ? !p.isPrimary : false })));
-    proformas.forEach((p) => markDirty(p.id));
-    toast.message(lang === "ar" ? "اضغط «حفظ الآن» لتأكيد التغيير" : "Click Save Now to persist");
+  const togglePrimary = async (id: string) => {
+    const next = proformas.map((p) => ({ ...p, isPrimary: p.id === id ? !p.isPrimary : false }));
+    setProformas(next);
+    try { localStorage.setItem(CACHE_KEY, JSON.stringify(next)); } catch {}
+    const changed = next.filter((p) => p.isPrimary !== !!proformas.find((old) => old.id === p.id)?.isPrimary);
+    setSaveState("saving");
+    const results = await Promise.all(changed.map((p) => supabase.from("proformas").update({
+      data: { meta: p.meta, rows: p.rows, themeColor: p.themeColor, isPrimary: !!p.isPrimary },
+    }).eq("id", p.id)));
+    const failed = results.find((r) => r.error);
+    if (failed?.error) { console.error(failed.error); changed.forEach((p) => markDirty(p.id)); toast.error("فشل الحفظ / Save failed"); setSaveState("idle"); return; }
+    setSaveState("saved");
+    setTimeout(() => setSaveState("idle"), 1200);
+    toast.success(lang === "ar" ? "اتحدثت المكتبة فوراً" : "Library updated instantly");
   };
 
   const totals = useMemo(() => {
@@ -237,7 +281,11 @@ export default function ProformaApp() {
   }, [rows]);
 
   const updateRow = (id: string, patch: Partial<Row>) => setRows((rs) => rs.map((r) => (r.id === id ? { ...r, ...patch } : r)));
-  const removeRow = (id: string) => setRows((rs) => rs.filter((r) => r.id !== id));
+  const removeRow = (id: string) => {
+    const row = rows.find((r) => r.id === id);
+    if (!confirm(lang === "ar" ? `تأكيد حذف المنتج ${row?.itemName || ""}؟` : `Delete ${row?.itemName || "this item"}?`)) return;
+    setRows((rs) => rs.filter((r) => r.id !== id));
+  };
   const addRow = () => setRows((rs) => [...rs, newRow()]);
   const duplicateRow = (id: string) =>
     setRows((rs) => { const i = rs.findIndex((r) => r.id === id); if (i < 0) return rs;
@@ -246,15 +294,14 @@ export default function ProformaApp() {
   const sendRowToProformas = async (row: Row, targetIds: string[]) => {
     if (targetIds.length === 0) return;
     setSaveState("saving");
-    for (const tid of targetIds) {
-      const cur = proformas.find((p) => p.id === tid); if (!cur) continue;
-      const updatedRows = [...cur.rows, { ...row, id: crypto.randomUUID() }];
-      const { error } = await supabase.from("proformas").update({
-        data: { meta: cur.meta, rows: updatedRows, themeColor: cur.themeColor }
-      }).eq("id", tid);
-      if (error) { console.error(error); toast.error("فشل الإرسال"); setSaveState("idle"); return; }
-      setProformas((ps) => ps.map((p) => (p.id === tid ? { ...p, rows: updatedRows } : p)));
-    }
+    const updated = proformas.map((p) => targetIds.includes(p.id) ? { ...p, rows: [...p.rows, { ...row, id: crypto.randomUUID() }] } : p);
+    setProformas(updated);
+    try { localStorage.setItem(CACHE_KEY, JSON.stringify(updated)); } catch {}
+    const results = await Promise.all(updated.filter((p) => targetIds.includes(p.id)).map((p) => supabase.from("proformas").update({
+      data: { meta: p.meta, rows: p.rows, themeColor: p.themeColor, isPrimary: !!p.isPrimary }
+    }).eq("id", p.id)));
+    const failed = results.find((r) => r.error);
+    if (failed?.error) { console.error(failed.error); toast.error("فشل الإرسال"); setSaveState("idle"); await loadAll(); return; }
     setSaveState("saved"); setTimeout(() => setSaveState("idle"), 1500);
     toast.success(lang === "ar" ? `تم الإرسال إلى ${targetIds.length} بروفورما` : `Sent to ${targetIds.length} proforma(s)`);
   };
@@ -283,12 +330,13 @@ export default function ProformaApp() {
   const fmtDate = (d: string) => { if (!d) return ""; const [y,m,da] = d.split("-"); return `${da}/${m}/${y}`; };
 
   /* ───── PDF — capture #printable so Arabic & alignment match exactly ───── */
-  const exportPDF = async () => {
+  const exportPDF = async (invoiceOnly = false) => {
     const el = document.getElementById("printable");
     if (!el) return;
     toast.message(lang === "ar" ? "بنحضّر الملف…" : "Preparing PDF…");
     // Hide action column during capture
     el.classList.add("pdf-capture");
+    if (invoiceOnly) el.classList.add("invoice-capture");
     try {
       const canvas = await html2canvas(el, {
         scale: 2, useCORS: true, backgroundColor: "#ffffff", logging: false,
@@ -323,17 +371,18 @@ export default function ProformaApp() {
           renderedPx += sliceCanvas.height;
         }
       }
-      pdf.save(`${meta.title || "proforma"}-${meta.customer || "customer"}.pdf`);
+      pdf.save(`${invoiceOnly ? "Invoice" : (meta.title || "proforma")}-${meta.customer || "customer"}.pdf`);
       toast.success("PDF ✓");
     } catch (e) {
       console.error(e);
       toast.error(lang === "ar" ? "فشل التصدير" : "Export failed");
     } finally {
       el.classList.remove("pdf-capture");
+      el.classList.remove("invoice-capture");
     }
   };
 
-  const exportPPTX = async () => {
+  const exportPPTX = async (invoiceOnly = false) => {
     const pptx = new PptxGenJS(); pptx.layout = "LAYOUT_WIDE"; pptx.title = meta.title;
     const ac = themeColor;
     const perSlideFirst = 5; // header takes vertical space
@@ -350,17 +399,25 @@ export default function ProformaApp() {
       chunks.push(remaining.splice(0, take));
     }
     // If the last chunk is too big to also host the footer, split it
-    if (chunks.length > 0 && chunks[chunks.length - 1].length > perSlideLast) {
+    const lastMax = chunks.length === 1 ? 3 : perSlideLast;
+    if (chunks.length > 0 && chunks[chunks.length - 1].length > lastMax) {
       const last = chunks[chunks.length - 1];
-      const head = last.slice(0, perSlideMid);
-      const tail = last.slice(perSlideMid);
+      const splitAt = Math.max(1, last.length - lastMax);
+      const head = last.slice(0, splitAt);
+      const tail = last.slice(splitAt);
       chunks[chunks.length - 1] = head;
       if (tail.length) chunks.push(tail);
     }
     const pages = chunks.length;
     // Column widths must sum to table width (12.73)
-    const colW = [0.40,1.24,1.58,1.02,1.02,0.62,0.74,0.74,0.68,0.91,0.96,0.62,0.74,0.68,0.79];
-    const head = ["No","Item Name","Description","Image","Packing","Ctn","Doz/Ctn","Set/Ctn","Pcs/Set","Price/Set","T.Amount","CBM","T.CBM","Weight","T.Weight"];
+    const allColW = [0.40,1.24,1.58,1.02,1.02,0.62,0.74,0.74,0.68,0.91,0.96,0.62,0.74,0.68,0.79];
+    const allHead = ["No","Item Name","Description","Image","Packing","Ctn","Doz/Ctn","Set/Ctn","Pcs/Set","Price/Set","T.Amount","CBM","T.CBM","Weight","T.Weight"];
+    const fitCols = (cols: number[]) => {
+      const sum = cols.reduce((s, v) => s + v, 0);
+      return cols.map((v) => +(v * 12.73 / sum).toFixed(3));
+    };
+    const colW = invoiceOnly ? fitCols(allColW.slice(0, 11)) : allColW;
+    const head = invoiceOnly ? allHead.slice(0, 11) : allHead;
     let runningIndex = 0;
     for (let p = 0; p < pages; p++) {
       const isFirst = p === 0;
@@ -390,7 +447,7 @@ export default function ProformaApp() {
       const tr: PptxGenJS.TableRow[] = [headerRow as unknown as PptxGenJS.TableRow];
       slice.forEach((r, idx) => {
         const gi = runningIndex + idx + 1;
-        tr.push([
+        const fullRow = [
           { text: String(gi), options: { align: "center", valign: "middle", bold: true } },
           { text: r.itemName, options: { valign: "middle" } },
           { text: r.description, options: { valign: "middle" } },
@@ -401,7 +458,8 @@ export default function ProformaApp() {
           { text: String(amount(r) || ""), options: { align: "center", bold: true } },
           { text: r.cbm, options: { align: "center", bold: true } }, { text: String(tCbm(r) || ""), options: { align: "center", bold: true } },
           { text: r.weight, options: { align: "center", bold: true } }, { text: String(tWeight(r) || ""), options: { align: "center", bold: true } },
-        ] as unknown as PptxGenJS.TableRow);
+        ];
+        tr.push((invoiceOnly ? fullRow.slice(0, 11) : fullRow) as unknown as PptxGenJS.TableRow);
       });
       const rowH = 0.75;
       s.addTable(tr, { x: 0.3, y: tY, w: 12.73, rowH, fontSize: 8.5, border: { type: "solid", pt: 0.5, color: "E5E7EB" }, valign: "middle", colW });
@@ -418,11 +476,13 @@ export default function ProformaApp() {
       if (isLast) {
         const cY = tY + rowH + slice.length*rowH + 0.25;
         s.addText(`• ${meta.notes}`, { x: 0.3, y: cY-0.05, w: 12.73, h: 0.3, fontSize: 11, bold: true, color: "222222", align: "right" });
-        const cards = [
+        const cards = invoiceOnly ? [
+          { l: "T.Ctn", v: String(totals.tCtn) }, { l: "T.Amount", v: String(totals.tAmount) },
+        ] : [
           { l: "T.Ctn", v: String(totals.tCtn) }, { l: "T.CBM", v: totals.tCBM.toFixed(2) },
           { l: "T.Weight", v: totals.tWt.toFixed(2) }, { l: "T.Amount", v: String(totals.tAmount) },
         ];
-        const cw = 2.0, ch = 0.95, gap = 0.15; let cx = 13.03 - (cw*4 + gap*3);
+        const cw = 2.0, ch = 0.95, gap = 0.15; let cx = 13.03 - (cw*cards.length + gap*(cards.length - 1));
         cards.forEach((c) => {
           s.addShape("roundRect", { x: cx, y: cY+0.25, w: cw, h: ch, fill: { color: "FFFFFF" }, line: { color: ac, width: 1 }, rectRadius: 0.05 });
           s.addShape("rect", { x: cx+0.02, y: cY+0.27, w: cw-0.04, h: 0.28, fill: { color: ac }, line: { color: ac } });
@@ -437,7 +497,7 @@ export default function ProformaApp() {
         s.addText(`E-MAIL: ${meta.email}`, { x: 0.4, y: 7.2, w: 12.5, h: 0.18, fontSize: 8, color: "FFFFFF", align: "center" });
       }
     }
-    await pptx.writeFile({ fileName: `${meta.title || "proforma"}-${meta.customer || "customer"}.pptx` });
+    await pptx.writeFile({ fileName: `${invoiceOnly ? "Invoice" : (meta.title || "proforma")}-${meta.customer || "customer"}.pptx` });
     toast.success("PPTX ✓");
   };
 
@@ -447,6 +507,10 @@ export default function ProformaApp() {
 
   const themeStyle: CSSProperties = { ["--accent" as never]: accent };
   const dir = lang === "ar" ? "rtl" : "ltr";
+
+  if (loadFailed && proformas.length === 0) {
+    return <div className="flex min-h-screen items-center justify-center text-sm text-muted-foreground">تعذر تحميل البيانات — حاول تحديث الصفحة</div>;
+  }
 
   if (!loaded || !active) {
     return <div className="flex min-h-screen items-center justify-center text-sm text-muted-foreground">Loading…</div>;
@@ -472,8 +536,9 @@ export default function ProformaApp() {
             </Button>
             <Button size="sm" variant="outline" onClick={onSaveNow}><Save className="mr-1 h-4 w-4" /> {t.save}</Button>
             <Button size="sm" variant="outline" onClick={onPrint}><Printer className="mr-1 h-4 w-4" /> {t.print}</Button>
-            <Button size="sm" onClick={exportPDF} className="bg-sky-600 text-white hover:bg-sky-700"><FileDown className="mr-1 h-4 w-4" /> {t.pdf}</Button>
-            <Button size="sm" onClick={exportPPTX} className="bg-orange-500 text-white hover:bg-orange-600"><Presentation className="mr-1 h-4 w-4" /> {t.pptx}</Button>
+            <Button size="sm" onClick={() => exportPDF()} className="bg-sky-600 text-white hover:bg-sky-700"><FileDown className="mr-1 h-4 w-4" /> {t.pdf}</Button>
+            <Button size="sm" onClick={() => exportPPTX()} className="bg-orange-500 text-white hover:bg-orange-600"><Presentation className="mr-1 h-4 w-4" /> {t.pptx}</Button>
+            <Button size="sm" variant="outline" onClick={() => setShowInvoice(true)}><FileText className="mr-1 h-4 w-4" /> {t.createInvoice}</Button>
             <Button size="sm" onClick={createProforma} className="bg-purple-600 text-white hover:bg-purple-700"><FilePlus className="mr-1 h-4 w-4" /> {t.newInvoice}</Button>
             <Button size="sm" onClick={addRow} className="text-white hover:opacity-90" style={{ background: accent }}><Plus className="mr-1 h-4 w-4" /> {t.addItem}</Button>
             <Button size="sm" variant="outline" onClick={() => setShowLibrary(true)}><Library className="mr-1 h-4 w-4" /> {t.library}</Button>
@@ -565,7 +630,7 @@ export default function ProformaApp() {
           </div>
           {/* Notes + Totals */}
           <div className="px-6 pt-3"><div className="text-end text-[13px] font-semibold">• {meta.notes}</div></div>
-          <div className="flex flex-wrap justify-end gap-3 px-6 py-4">
+          <div className="totals-row flex flex-wrap justify-end gap-3 px-6 py-4">
             {[
               { l: t.totals.ctn, v: totals.tCtn },
               { l: t.totals.cbm, v: totals.tCBM.toFixed(2) },
@@ -579,16 +644,20 @@ export default function ProformaApp() {
             ))}
           </div>
           {/* Footer */}
-          <div className="px-6 pt-3 pb-1 text-center text-white" style={{ background: accent }}>
-            <Input value={meta.address} onChange={(e) => setMeta({ ...meta, address: e.target.value })} className="mx-auto h-7 max-w-3xl border-0 bg-transparent text-center text-[12px] font-medium text-white placeholder:text-white/70 shadow-none focus-visible:ring-0" />
-            <Input value={meta.phone} onChange={(e) => setMeta({ ...meta, phone: e.target.value })} className="mx-auto h-7 max-w-md border-0 bg-transparent text-center text-[11px] text-white shadow-none focus-visible:ring-0" />
-            <Input value={meta.email} onChange={(e) => setMeta({ ...meta, email: e.target.value })} className="mx-auto h-7 max-w-xl border-0 bg-transparent text-center text-[11px] text-white shadow-none focus-visible:ring-0" />
+          <div className="footer-block px-6 py-3 text-center text-white" style={{ background: accent }}>
+            <Input value={meta.address} onChange={(e) => setMeta({ ...meta, address: e.target.value })} className="footer-input mx-auto h-7 max-w-3xl border-0 bg-transparent text-center text-[12px] font-medium text-white placeholder:text-white/70 shadow-none focus-visible:ring-0" />
+            <div className="footer-text hidden text-[12px] font-medium leading-5">{meta.address || "\u00A0"}</div>
+            <Input value={meta.phone} onChange={(e) => setMeta({ ...meta, phone: e.target.value })} className="footer-input mx-auto h-7 max-w-md border-0 bg-transparent text-center text-[11px] text-white shadow-none focus-visible:ring-0" />
+            <div className="footer-text hidden text-[11px] leading-5">{meta.phone || "\u00A0"}</div>
+            <Input value={meta.email} onChange={(e) => setMeta({ ...meta, email: e.target.value })} className="footer-input mx-auto h-7 max-w-xl border-0 bg-transparent text-center text-[11px] text-white shadow-none focus-visible:ring-0" />
+            <div className="footer-text hidden text-[11px] leading-5">{meta.email || "\u00A0"}</div>
           </div>
         </div>
         <p className="mt-4 text-center text-xs text-muted-foreground print:hidden">{t.arabicTip}</p>
       </main>
 
       {showLibrary && <LibraryModal items={library} accent={accent} lang={lang} onPick={(r) => { copyFromLibrary(r); }} onClose={() => setShowLibrary(false)} />}
+      {showInvoice && <InvoiceModal accent={accent} lang={lang} onCancel={() => setShowInvoice(false)} onPdf={async () => { setShowInvoice(false); await exportPDF(true); }} onPptx={async () => { setShowInvoice(false); await exportPPTX(true); }} />}
       {sendItem && (
         <SendToModal
           item={sendItem} accent={accent} lang={lang}
@@ -622,6 +691,15 @@ export default function ProformaApp() {
         #printable.pdf-capture .img-cell-btn img { object-fit: contain !important; }
         #printable.pdf-capture .meta-input { display: none !important; }
         #printable.pdf-capture .meta-text { display: block !important; }
+        #printable.pdf-capture .footer-input { display: none !important; }
+        #printable.pdf-capture .footer-text { display: block !important; color: #ffffff !important; }
+        #printable.pdf-capture.invoice-capture th:nth-child(n+12),
+        #printable.pdf-capture.invoice-capture td:nth-child(n+12) { display: none !important; }
+        #printable.pdf-capture.invoice-capture .totals-row > div:nth-child(2),
+        #printable.pdf-capture.invoice-capture .totals-row > div:nth-child(3) { display: none !important; }
+        input[type="number"]::-webkit-outer-spin-button,
+        input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+        input[type="number"] { -moz-appearance: textfield; }
         @media print {
           html, body { background: white !important; }
           body { margin: 0 !important; }
@@ -634,6 +712,8 @@ export default function ProformaApp() {
           #printable .img-cell-btn { border-color: transparent !important; background: transparent !important; }
           #printable th:last-child, #printable td:last-child { display: none !important; }
           #printable input { border: none !important; background: transparent !important; padding: 0 !important; box-shadow: none !important; }
+          #printable .footer-input { display: none !important; }
+          #printable .footer-text { display: block !important; color: #ffffff !important; }
           #printable, #printable * {
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
@@ -656,10 +736,12 @@ export default function ProformaApp() {
 /* ───────────────────────────  PIECES  ─────────────────────────── */
 
 function CellInput({ value, onChange, type = "text", align = "center" }: { value: string; onChange: (v: string) => void; type?: string; align?: "left"|"center"|"right" }) {
+  const inputType = type === "number" ? "text" : type;
   return (
     <>
       <input
-        type={type}
+        type={inputType}
+        inputMode={type === "number" ? "decimal" : undefined}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         className="cell-input w-full rounded border border-input bg-white px-1.5 py-1 text-[12px] outline-none transition focus:border-foreground focus:ring-1 focus:ring-foreground/20 print:hidden"
@@ -792,6 +874,27 @@ function SendToModal({ item, targets, accent, lang, onCancel, onSend }:
           <Button size="sm" onClick={() => onSend([...picked])} disabled={picked.size === 0} style={{ background: accent }} className="text-white">
             <Send className="me-1 h-4 w-4" /> {tt.sendNow} ({picked.size})
           </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function InvoiceModal({ accent, lang, onCancel, onPdf, onPptx }:
+  { accent: string; lang: Lang; onCancel: () => void; onPdf: () => void; onPptx: () => void; }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onCancel}>
+      <div className="w-full max-w-sm overflow-hidden rounded-lg bg-white shadow-2xl" onClick={(e) => e.stopPropagation()} dir={lang === "ar" ? "rtl" : "ltr"}>
+        <div className="flex items-center justify-between border-b px-5 py-3" style={{ background: `${accent}15` }}>
+          <div>
+            <h3 className="font-semibold">Create Invoice</h3>
+            <p className="text-xs text-muted-foreground">{lang === "ar" ? "التصدير لحد عمود T.Amount فقط" : "Exports columns up to T.Amount only"}</p>
+          </div>
+          <button onClick={onCancel} className="text-muted-foreground hover:text-foreground"><X className="h-5 w-5" /></button>
+        </div>
+        <div className="grid grid-cols-2 gap-3 p-5">
+          <Button onClick={onPdf} className="bg-sky-600 text-white hover:bg-sky-700"><FileDown className="me-1 h-4 w-4" /> PDF</Button>
+          <Button onClick={onPptx} className="bg-orange-500 text-white hover:bg-orange-600"><Presentation className="me-1 h-4 w-4" /> PowerPoint</Button>
         </div>
       </div>
     </div>
