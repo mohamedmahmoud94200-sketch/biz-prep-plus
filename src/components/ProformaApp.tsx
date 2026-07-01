@@ -119,6 +119,7 @@ export default function ProformaApp() {
   const [showCompany, setShowCompany] = useState(false);
   const [showInvoice, setShowInvoice] = useState(false);
   const [saveState, setSaveState] = useState<"idle"|"saving"|"saved">("idle");
+  const [loadFailed, setLoadFailed] = useState(false);
   const [lang, setLang] = useState<Lang>(() => (typeof window !== "undefined" && (localStorage.getItem(LANG_KEY) as Lang)) || "ar");
   const [sendItem, setSendItem] = useState<Row | null>(null);
   const logoRef = useRef<HTMLInputElement>(null);
@@ -128,7 +129,7 @@ export default function ProformaApp() {
   /* ----- load ----- */
   const loadAll = useCallback(async () => {
     const { data, error } = await supabase.from("proformas").select("id, name, data, sort_order").order("sort_order").order("created_at");
-    if (error) { console.error(error); return; }
+    if (error) { console.error(error); setLoadFailed(true); return false; }
     const list: Proforma[] = (data ?? []).map((r) => {
       const d = (r.data ?? {}) as Partial<Proforma>;
       return {
@@ -141,6 +142,8 @@ export default function ProformaApp() {
     });
     setProformas(list);
     try { localStorage.setItem(CACHE_KEY, JSON.stringify(list)); } catch {}
+    setLoadFailed(false);
+    return true;
   }, []);
 
   useEffect(() => {
@@ -155,8 +158,8 @@ export default function ProformaApp() {
           }
         }
       } catch {}
-      await loadAll();
-      setLoaded(true);
+      const ok = await loadAll();
+      if (ok) setLoaded(true);
     })();
   }, [loadAll]);
 
@@ -167,14 +170,14 @@ export default function ProformaApp() {
 
   // ensure at least one + pick active
   useEffect(() => {
-    if (!loaded) return;
+    if (!loaded || loadFailed) return;
     if (proformas.length === 0) {
       const p = newProforma(lang === "ar" ? "بروفورما 1" : "Proforma 1", 0);
       supabase.from("proformas").insert({ id: p.id, name: p.name, sort_order: 0, data: { meta: p.meta, rows: p.rows, themeColor: p.themeColor } }).then(loadAll);
       return;
     }
     if (!activeId || !proformas.find((p) => p.id === activeId)) setActiveId(proformas[0].id);
-  }, [loaded, proformas, activeId, lang, loadAll]);
+  }, [loaded, loadFailed, proformas, activeId, lang, loadAll]);
 
   useEffect(() => { try { localStorage.setItem(LANG_KEY, lang); } catch {} }, [lang]);
 
@@ -505,6 +508,10 @@ export default function ProformaApp() {
 
   if (!loaded || !active) {
     return <div className="flex min-h-screen items-center justify-center text-sm text-muted-foreground">Loading…</div>;
+  }
+
+  if (loadFailed && proformas.length === 0) {
+    return <div className="flex min-h-screen items-center justify-center text-sm text-muted-foreground">تعذر تحميل البيانات — حاول تحديث الصفحة</div>;
   }
 
   return (
