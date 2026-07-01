@@ -215,15 +215,17 @@ export default function ProformaApp() {
   }, []);
 
   const updateActive = (patch: Partial<Proforma>) => {
-    if (!activeId) return;
-    setProformas((ps) => ps.map((p) => (p.id === activeId ? { ...p, ...patch } : p)));
-    markDirty(activeId);
+    const targetId = activeId || active?.id;
+    if (!targetId) return;
+    setProformas((ps) => ps.map((p) => (p.id === targetId ? { ...p, ...patch } : p)));
+    markDirty(targetId);
   };
   const setMeta = (m: Meta) => updateActive({ meta: m });
   const setRows = (u: Row[] | ((rs: Row[]) => Row[])) => {
-    if (!activeId) return;
-    setProformas((ps) => ps.map((p) => (p.id === activeId ? { ...p, rows: typeof u === "function" ? (u as (r: Row[]) => Row[])(p.rows) : u } : p)));
-    markDirty(activeId);
+    const targetId = activeId || active?.id;
+    if (!targetId) return;
+    setProformas((ps) => ps.map((p) => (p.id === targetId ? { ...p, rows: typeof u === "function" ? (u as (r: Row[]) => Row[])(p.rows) : u } : p)));
+    markDirty(targetId);
   };
   const setThemeColor = (c: string) => updateActive({ themeColor: c.replace("#","") });
 
@@ -628,7 +630,7 @@ export default function ProformaApp() {
           </div>
           {/* Notes + Totals */}
           <div className="px-6 pt-3"><div className="text-end text-[13px] font-semibold">• {meta.notes}</div></div>
-          <div className="flex flex-wrap justify-end gap-3 px-6 py-4">
+          <div className="totals-row flex flex-wrap justify-end gap-3 px-6 py-4">
             {[
               { l: t.totals.ctn, v: totals.tCtn },
               { l: t.totals.cbm, v: totals.tCBM.toFixed(2) },
@@ -693,6 +695,8 @@ export default function ProformaApp() {
         #printable.pdf-capture .footer-text { display: block !important; color: #ffffff !important; }
         #printable.pdf-capture.invoice-capture th:nth-child(n+12),
         #printable.pdf-capture.invoice-capture td:nth-child(n+12) { display: none !important; }
+        #printable.pdf-capture.invoice-capture .totals-row > div:nth-child(2),
+        #printable.pdf-capture.invoice-capture .totals-row > div:nth-child(3) { display: none !important; }
         input[type="number"]::-webkit-outer-spin-button,
         input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
         input[type="number"] { -moz-appearance: textfield; }
