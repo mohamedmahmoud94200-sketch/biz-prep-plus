@@ -140,14 +140,30 @@ export default function ProformaApp() {
       };
     });
     setProformas(list);
+    try { localStorage.setItem(CACHE_KEY, JSON.stringify(list)); } catch {}
   }, []);
 
   useEffect(() => {
     (async () => {
+      try {
+        const cached = localStorage.getItem(CACHE_KEY);
+        if (cached) {
+          const list = JSON.parse(cached) as Proforma[];
+          if (Array.isArray(list) && list.length > 0) {
+            setProformas(list);
+            setLoaded(true);
+          }
+        }
+      } catch {}
       await loadAll();
       setLoaded(true);
     })();
   }, [loadAll]);
+
+  useEffect(() => {
+    if (!loaded || proformas.length === 0) return;
+    try { localStorage.setItem(CACHE_KEY, JSON.stringify(proformas)); } catch {}
+  }, [loaded, proformas]);
 
   // ensure at least one + pick active
   useEffect(() => {
@@ -174,16 +190,21 @@ export default function ProformaApp() {
     const ids = [...dirtyIds.current]; dirtyIds.current.clear();
     setSaveState("saving");
     const targets = proformas.filter((p) => ids.includes(p.id));
-    for (const p of targets) {
-      const { error } = await supabase.from("proformas").upsert({
+    const results = await Promise.all(targets.map((p) => supabase.from("proformas").upsert({
         id: p.id, name: p.name, sort_order: p.sortOrder,
         data: { meta: p.meta, rows: p.rows, themeColor: p.themeColor, isPrimary: !!p.isPrimary },
-      });
-      if (error) { console.error(error); toast.error("فشل الحفظ / Save failed"); setSaveState("idle"); return; }
-    }
+      })));
+    const failed = results.find((r) => r.error);
+    if (failed?.error) { console.error(failed.error); ids.forEach((id) => dirtyIds.current.add(id)); toast.error("فشل الحفظ / Save failed"); setSaveState("idle"); return; }
     setSaveState("saved");
     setTimeout(() => setSaveState((s) => (s === "saved" ? "idle" : s)), 1500);
   }, [proformas]);
+
+  useEffect(() => {
+    if (!loaded || dirtyIds.current.size === 0) return;
+    const timer = window.setTimeout(() => { void flushSave(); }, 900);
+    return () => window.clearTimeout(timer);
+  }, [loaded, proformas, flushSave]);
 
   const markDirty = useCallback((id: string) => {
     dirtyIds.current.add(id);
@@ -224,10 +245,20 @@ export default function ProformaApp() {
     markDirty(id);
   };
 
-  const togglePrimary = (id: string) => {
-    setProformas((ps) => ps.map((p) => ({ ...p, isPrimary: p.id === id ? !p.isPrimary : false })));
-    proformas.forEach((p) => markDirty(p.id));
-    toast.message(lang === "ar" ? "اضغط «حفظ الآن» لتأكيد التغيير" : "Click Save Now to persist");
+  const togglePrimary = async (id: string) => {
+    const next = proformas.map((p) => ({ ...p, isPrimary: p.id === id ? !p.isPrimary : false }));
+    setProformas(next);
+    try { localStorage.setItem(CACHE_KEY, JSON.stringify(next)); } catch {}
+    const changed = next.filter((p) => p.isPrimary !== !!proformas.find((old) => old.id === p.id)?.isPrimary);
+    setSaveState("saving");
+    const results = await Promise.all(changed.map((p) => supabase.from("proformas").update({
+      data: { meta: p.meta, rows: p.rows, themeColor: p.themeColor, isPrimary: !!p.isPrimary },
+    }).eq("id", p.id)));
+    const failed = results.find((r) => r.error);
+    if (failed?.error) { console.error(failed.error); changed.forEach((p) => markDirty(p.id)); toast.error("فشل الحفظ / Save failed"); setSaveState("idle"); return; }
+    setSaveState("saved");
+    setTimeout(() => setSaveState("idle"), 1200);
+    toast.success(lang === "ar" ? "اتحدثت المكتبة فوراً" : "Library updated instantly");
   };
 
   const totals = useMemo(() => {
@@ -239,7 +270,11 @@ export default function ProformaApp() {
   }, [rows]);
 
   const updateRow = (id: string, patch: Partial<Row>) => setRows((rs) => rs.map((r) => (r.id === id ? { ...r, ...patch } : r)));
-  const removeRow = (id: string) => setRows((rs) => rs.filter((r) => r.id !== id));
+  const removeRow = (id: string) => {
+    const row = rows.find((r) => r.id === id);
+    if (!confirm(lang === "ar" ? `تأكيد حذف المنتج ${row?.itemName || ""}؟` : `Delete ${row?.itemName || "this item"}?`)) return;
+    setRows((rs) => rs.filter((r) => r.id !== id));
+  };
   const addRow = () => setRows((rs) => [...rs, newRow()]);
   const duplicateRow = (id: string) =>
     setRows((rs) => { const i = rs.findIndex((r) => r.id === id); if (i < 0) return rs;
@@ -248,15 +283,14 @@ export default function ProformaApp() {
   const sendRowToProformas = async (row: Row, targetIds: string[]) => {
     if (targetIds.length === 0) return;
     setSaveState("saving");
-    for (const tid of targetIds) {
-      const cur = proformas.find((p) => p.id === tid); if (!cur) continue;
-      const updatedRows = [...cur.rows, { ...row, id: crypto.randomUUID() }];
-      const { error } = await supabase.from("proformas").update({
-        data: { meta: cur.meta, rows: updatedRows, themeColor: cur.themeColor }
-      }).eq("id", tid);
-      if (error) { console.error(error); toast.error("فشل الإرسال"); setSaveState("idle"); return; }
-      setProformas((ps) => ps.map((p) => (p.id === tid ? { ...p, rows: updatedRows } : p)));
-    }
+    const updated = proformas.map((p) => targetIds.includes(p.id) ? { ...p, rows: [...p.rows, { ...row, id: crypto.randomUUID() }] } : p);
+    setProformas(updated);
+    try { localStorage.setItem(CACHE_KEY, JSON.stringify(updated)); } catch {}
+    const results = await Promise.all(updated.filter((p) => targetIds.includes(p.id)).map((p) => supabase.from("proformas").update({
+      data: { meta: p.meta, rows: p.rows, themeColor: p.themeColor, isPrimary: !!p.isPrimary }
+    }).eq("id", p.id)));
+    const failed = results.find((r) => r.error);
+    if (failed?.error) { console.error(failed.error); toast.error("فشل الإرسال"); setSaveState("idle"); await loadAll(); return; }
     setSaveState("saved"); setTimeout(() => setSaveState("idle"), 1500);
     toast.success(lang === "ar" ? `تم الإرسال إلى ${targetIds.length} بروفورما` : `Sent to ${targetIds.length} proforma(s)`);
   };
