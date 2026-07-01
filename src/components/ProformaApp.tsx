@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   Plus, Trash2, FileDown, Presentation, Copy, Library, FilePlus, Palette, X,
-  Package, Printer, ImageIcon, Send, Save, Languages, LogOut, Star,
+  Package, Printer, ImageIcon, Send, Save, Languages, LogOut, Star, FileText,
 } from "lucide-react";
 import { toast } from "sonner";
 import jsPDF from "jspdf";
@@ -27,10 +27,11 @@ type Proforma = {
 type Lang = "ar" | "en";
 
 const LANG_KEY = "proforma-lang";
+const CACHE_KEY = "proforma-cache-v2";
 
 const T = {
   ar: {
-    print: "طباعة", pdf: "PDF", pptx: "PowerPoint",
+    print: "طباعة", pdf: "PDF", pptx: "PowerPoint", createInvoice: "Create Invoice",
     newInvoice: "بروفورما جديدة", addItem: "إضافة منتج", library: "مكتبة المنتجات",
     theme: "اللون", save: "حفظ الآن", saved: "محفوظ ☁", saving: "جارى الحفظ…",
     lang: "EN", customer: "العميل", date: "التاريخ",
@@ -44,7 +45,7 @@ const T = {
     proforma: "بروفورما",
   },
   en: {
-    print: "Print", pdf: "PDF", pptx: "PowerPoint",
+    print: "Print", pdf: "PDF", pptx: "PowerPoint", createInvoice: "Create Invoice",
     newInvoice: "New Invoice", addItem: "Add Item", library: "Library",
     theme: "Theme", save: "Save Now", saved: "Saved ☁", saving: "Saving…",
     lang: "ع", customer: "CUSTOMER", date: "DATE",
@@ -116,6 +117,7 @@ export default function ProformaApp() {
   const [showLibrary, setShowLibrary] = useState(false);
   const [showThemes, setShowThemes] = useState(false);
   const [showCompany, setShowCompany] = useState(false);
+  const [showInvoice, setShowInvoice] = useState(false);
   const [saveState, setSaveState] = useState<"idle"|"saving"|"saved">("idle");
   const [lang, setLang] = useState<Lang>(() => (typeof window !== "undefined" && (localStorage.getItem(LANG_KEY) as Lang)) || "ar");
   const [sendItem, setSendItem] = useState<Row | null>(null);
