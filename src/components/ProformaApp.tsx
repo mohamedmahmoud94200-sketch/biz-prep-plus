@@ -506,12 +506,12 @@ export default function ProformaApp() {
   const themeStyle: CSSProperties = { ["--accent" as never]: accent };
   const dir = lang === "ar" ? "rtl" : "ltr";
 
-  if (!loaded || !active) {
-    return <div className="flex min-h-screen items-center justify-center text-sm text-muted-foreground">Loading…</div>;
-  }
-
   if (loadFailed && proformas.length === 0) {
     return <div className="flex min-h-screen items-center justify-center text-sm text-muted-foreground">تعذر تحميل البيانات — حاول تحديث الصفحة</div>;
+  }
+
+  if (!loaded || !active) {
+    return <div className="flex min-h-screen items-center justify-center text-sm text-muted-foreground">Loading…</div>;
   }
 
   return (
