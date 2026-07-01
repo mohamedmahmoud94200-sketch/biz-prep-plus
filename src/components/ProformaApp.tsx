@@ -319,12 +319,13 @@ export default function ProformaApp() {
   const fmtDate = (d: string) => { if (!d) return ""; const [y,m,da] = d.split("-"); return `${da}/${m}/${y}`; };
 
   /* ───── PDF — capture #printable so Arabic & alignment match exactly ───── */
-  const exportPDF = async () => {
+  const exportPDF = async (invoiceOnly = false) => {
     const el = document.getElementById("printable");
     if (!el) return;
     toast.message(lang === "ar" ? "بنحضّر الملف…" : "Preparing PDF…");
     // Hide action column during capture
     el.classList.add("pdf-capture");
+    if (invoiceOnly) el.classList.add("invoice-capture");
     try {
       const canvas = await html2canvas(el, {
         scale: 2, useCORS: true, backgroundColor: "#ffffff", logging: false,
@@ -359,17 +360,18 @@ export default function ProformaApp() {
           renderedPx += sliceCanvas.height;
         }
       }
-      pdf.save(`${meta.title || "proforma"}-${meta.customer || "customer"}.pdf`);
+      pdf.save(`${invoiceOnly ? "Invoice" : (meta.title || "proforma")}-${meta.customer || "customer"}.pdf`);
       toast.success("PDF ✓");
     } catch (e) {
       console.error(e);
       toast.error(lang === "ar" ? "فشل التصدير" : "Export failed");
     } finally {
       el.classList.remove("pdf-capture");
+      el.classList.remove("invoice-capture");
     }
   };
 
-  const exportPPTX = async () => {
+  const exportPPTX = async (invoiceOnly = false) => {
     const pptx = new PptxGenJS(); pptx.layout = "LAYOUT_WIDE"; pptx.title = meta.title;
     const ac = themeColor;
     const perSlideFirst = 5; // header takes vertical space
@@ -386,17 +388,25 @@ export default function ProformaApp() {
       chunks.push(remaining.splice(0, take));
     }
     // If the last chunk is too big to also host the footer, split it
-    if (chunks.length > 0 && chunks[chunks.length - 1].length > perSlideLast) {
+    const lastMax = chunks.length === 1 ? 3 : perSlideLast;
+    if (chunks.length > 0 && chunks[chunks.length - 1].length > lastMax) {
       const last = chunks[chunks.length - 1];
-      const head = last.slice(0, perSlideMid);
-      const tail = last.slice(perSlideMid);
+      const splitAt = Math.max(1, last.length - lastMax);
+      const head = last.slice(0, splitAt);
+      const tail = last.slice(splitAt);
       chunks[chunks.length - 1] = head;
       if (tail.length) chunks.push(tail);
     }
     const pages = chunks.length;
     // Column widths must sum to table width (12.73)
-    const colW = [0.40,1.24,1.58,1.02,1.02,0.62,0.74,0.74,0.68,0.91,0.96,0.62,0.74,0.68,0.79];
-    const head = ["No","Item Name","Description","Image","Packing","Ctn","Doz/Ctn","Set/Ctn","Pcs/Set","Price/Set","T.Amount","CBM","T.CBM","Weight","T.Weight"];
+    const allColW = [0.40,1.24,1.58,1.02,1.02,0.62,0.74,0.74,0.68,0.91,0.96,0.62,0.74,0.68,0.79];
+    const allHead = ["No","Item Name","Description","Image","Packing","Ctn","Doz/Ctn","Set/Ctn","Pcs/Set","Price/Set","T.Amount","CBM","T.CBM","Weight","T.Weight"];
+    const fitCols = (cols: number[]) => {
+      const sum = cols.reduce((s, v) => s + v, 0);
+      return cols.map((v) => +(v * 12.73 / sum).toFixed(3));
+    };
+    const colW = invoiceOnly ? fitCols(allColW.slice(0, 11)) : allColW;
+    const head = invoiceOnly ? allHead.slice(0, 11) : allHead;
     let runningIndex = 0;
     for (let p = 0; p < pages; p++) {
       const isFirst = p === 0;
@@ -426,7 +436,7 @@ export default function ProformaApp() {
       const tr: PptxGenJS.TableRow[] = [headerRow as unknown as PptxGenJS.TableRow];
       slice.forEach((r, idx) => {
         const gi = runningIndex + idx + 1;
-        tr.push([
+        const fullRow = [
           { text: String(gi), options: { align: "center", valign: "middle", bold: true } },
           { text: r.itemName, options: { valign: "middle" } },
           { text: r.description, options: { valign: "middle" } },
@@ -437,7 +447,8 @@ export default function ProformaApp() {
           { text: String(amount(r) || ""), options: { align: "center", bold: true } },
           { text: r.cbm, options: { align: "center", bold: true } }, { text: String(tCbm(r) || ""), options: { align: "center", bold: true } },
           { text: r.weight, options: { align: "center", bold: true } }, { text: String(tWeight(r) || ""), options: { align: "center", bold: true } },
-        ] as unknown as PptxGenJS.TableRow);
+        ];
+        tr.push((invoiceOnly ? fullRow.slice(0, 11) : fullRow) as unknown as PptxGenJS.TableRow);
       });
       const rowH = 0.75;
       s.addTable(tr, { x: 0.3, y: tY, w: 12.73, rowH, fontSize: 8.5, border: { type: "solid", pt: 0.5, color: "E5E7EB" }, valign: "middle", colW });
@@ -454,11 +465,14 @@ export default function ProformaApp() {
       if (isLast) {
         const cY = tY + rowH + slice.length*rowH + 0.25;
         s.addText(`• ${meta.notes}`, { x: 0.3, y: cY-0.05, w: 12.73, h: 0.3, fontSize: 11, bold: true, color: "222222", align: "right" });
-        const cards = [
+        const cards = invoiceOnly ? [
+          { l: "T.Ctn", v: String(totals.tCtn) }, { l: "T.Amount", v: String(totals.tAmount) },
+        ] : [
           { l: "T.Ctn", v: String(totals.tCtn) }, { l: "T.CBM", v: totals.tCBM.toFixed(2) },
           { l: "T.Weight", v: totals.tWt.toFixed(2) }, { l: "T.Amount", v: String(totals.tAmount) },
         ];
         const cw = 2.0, ch = 0.95, gap = 0.15; let cx = 13.03 - (cw*4 + gap*3);
+        cx = 13.03 - (cw*cards.length + gap*(cards.length - 1));
         cards.forEach((c) => {
           s.addShape("roundRect", { x: cx, y: cY+0.25, w: cw, h: ch, fill: { color: "FFFFFF" }, line: { color: ac, width: 1 }, rectRadius: 0.05 });
           s.addShape("rect", { x: cx+0.02, y: cY+0.27, w: cw-0.04, h: 0.28, fill: { color: ac }, line: { color: ac } });
@@ -473,7 +487,7 @@ export default function ProformaApp() {
         s.addText(`E-MAIL: ${meta.email}`, { x: 0.4, y: 7.2, w: 12.5, h: 0.18, fontSize: 8, color: "FFFFFF", align: "center" });
       }
     }
-    await pptx.writeFile({ fileName: `${meta.title || "proforma"}-${meta.customer || "customer"}.pptx` });
+    await pptx.writeFile({ fileName: `${invoiceOnly ? "Invoice" : (meta.title || "proforma")}-${meta.customer || "customer"}.pptx` });
     toast.success("PPTX ✓");
   };
 
