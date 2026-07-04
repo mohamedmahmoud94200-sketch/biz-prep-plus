@@ -194,7 +194,7 @@ export default function ProformaApp() {
       supabase.from("proformas").insert({ id: p.id, name: p.name, sort_order: 0, is_primary: false, data: { meta: p.meta, rows: p.rows, themeColor: p.themeColor } }).then(loadAll);
       return;
     }
-    if (!activeId || !proformas.find((p) => p.id === activeId)) setActiveId(proformas[0].id);
+    if (!activeId || !proformas.find((p) => p.id === activeId)) setActiveId((proformas.find((p) => p.isPrimary) ?? proformas[0]).id);
   }, [loaded, loadFailed, proformas, activeId, lang, loadAll]);
 
   useEffect(() => { try { localStorage.setItem(LANG_KEY, lang); } catch {} }, [lang]);
@@ -204,6 +204,10 @@ export default function ProformaApp() {
   const rows = active?.rows ?? [];
   const themeColor = active?.themeColor ?? "2BB39B";
   const accent = `#${themeColor}`;
+
+  useEffect(() => {
+    if (loaded && active && !active.rowsLoaded) void loadRowsForProforma(active.id);
+  }, [loaded, active, loadRowsForProforma]);
 
   /* ----- save logic ----- */
   const flushSave = useCallback(async () => {
