@@ -23,11 +23,12 @@ type Meta = {
 };
 type Proforma = {
   id: string; name: string; meta: Meta; rows: Row[]; themeColor: string; sortOrder: number; isPrimary?: boolean;
+  rowsLoaded?: boolean;
 };
 type Lang = "ar" | "en";
 
 const LANG_KEY = "proforma-lang";
-const CACHE_KEY = "proforma-cache-v2";
+const CACHE_KEY = "proforma-cache-v3";
 
 const T = {
   ar: {
@@ -79,7 +80,7 @@ const THEME_PRESETS = [
 ];
 const newProforma = (name: string, sortOrder = 0): Proforma => ({
   id: crypto.randomUUID(), name, meta: defaultMeta(), rows: [newRow()],
-  themeColor: "2BB39B", sortOrder,
+  themeColor: "2BB39B", sortOrder, rowsLoaded: true,
 });
 
 const num = (s: string) => parseFloat(s || "0") || 0;
