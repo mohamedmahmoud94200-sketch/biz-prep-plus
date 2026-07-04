@@ -136,9 +136,10 @@ export default function ProformaApp() {
       return {
         id: r.id, name: r.name, sortOrder: r.sort_order,
         meta: { ...defaultMeta(), ...(d.meta ?? {}) },
-        rows: (d.rows ?? [newRow()]).map((x) => ({ ...newRow(), ...x })),
+        rows: (r.is_primary || (data ?? []).length === 1 ? (d.rows ?? [newRow()]) : []).map((x) => ({ ...newRow(), ...x })),
         themeColor: d.themeColor ?? "2BB39B",
         isPrimary: r.is_primary ?? d.isPrimary ?? false,
+        rowsLoaded: !!r.is_primary || (data ?? []).length === 1,
       };
     });
     setProformas(list);
@@ -163,6 +164,15 @@ export default function ProformaApp() {
       if (ok) setLoaded(true);
     })();
   }, [loadAll]);
+
+  const loadRowsForProforma = useCallback(async (id: string) => {
+    const existing = proformas.find((p) => p.id === id);
+    if (!existing || existing.rowsLoaded) return;
+    const { data, error } = await supabase.from("proformas").select("data").eq("id", id).single();
+    if (error) { console.error(error); toast.error("فشل تحميل البروفورما"); return; }
+    const d = (data?.data ?? {}) as Partial<Proforma>;
+    setProformas((ps) => ps.map((p) => p.id === id ? { ...p, rows: (d.rows ?? [newRow()]).map((x) => ({ ...newRow(), ...x })), rowsLoaded: true } : p));
+  }, [proformas]);
 
   useEffect(() => {
     if (!loaded || proformas.length === 0) return;
