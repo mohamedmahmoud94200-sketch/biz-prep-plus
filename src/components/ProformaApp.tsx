@@ -686,6 +686,18 @@ export default function ProformaApp() {
         #printable.pdf-capture .footer-text { display: block !important; color: #ffffff !important; }
         #printable.pdf-capture.invoice-capture th:nth-child(n+12),
         #printable.pdf-capture.invoice-capture td:nth-child(n+12) { display: none !important; }
+        #printable.pdf-capture.invoice-capture table { table-layout: fixed !important; }
+        #printable.pdf-capture.invoice-capture th:nth-child(1), #printable.pdf-capture.invoice-capture td:nth-child(1) { width: 55px !important; }
+        #printable.pdf-capture.invoice-capture th:nth-child(2), #printable.pdf-capture.invoice-capture td:nth-child(2) { width: 170px !important; max-width: 170px !important; }
+        #printable.pdf-capture.invoice-capture th:nth-child(3), #printable.pdf-capture.invoice-capture td:nth-child(3) { width: 220px !important; max-width: 220px !important; }
+        #printable.pdf-capture.invoice-capture th:nth-child(4), #printable.pdf-capture.invoice-capture td:nth-child(4),
+        #printable.pdf-capture.invoice-capture th:nth-child(5), #printable.pdf-capture.invoice-capture td:nth-child(5) { width: 135px !important; }
+        #printable.pdf-capture.invoice-capture th:nth-child(6), #printable.pdf-capture.invoice-capture td:nth-child(6) { width: 80px !important; }
+        #printable.pdf-capture.invoice-capture th:nth-child(7), #printable.pdf-capture.invoice-capture td:nth-child(7),
+        #printable.pdf-capture.invoice-capture th:nth-child(8), #printable.pdf-capture.invoice-capture td:nth-child(8),
+        #printable.pdf-capture.invoice-capture th:nth-child(9), #printable.pdf-capture.invoice-capture td:nth-child(9) { width: 95px !important; }
+        #printable.pdf-capture.invoice-capture th:nth-child(10), #printable.pdf-capture.invoice-capture td:nth-child(10),
+        #printable.pdf-capture.invoice-capture th:nth-child(11), #printable.pdf-capture.invoice-capture td:nth-child(11) { width: 120px !important; }
         #printable.pdf-capture.invoice-capture .totals-row > div:nth-child(2),
         #printable.pdf-capture.invoice-capture .totals-row > div:nth-child(3) { display: none !important; }
         input[type="number"]::-webkit-outer-spin-button,
