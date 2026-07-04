@@ -406,11 +406,8 @@ export default function ProformaApp() {
     // Column widths must sum to table width (12.73)
     const allColW = [0.40,1.24,1.58,1.02,1.02,0.62,0.74,0.74,0.68,0.91,0.96,0.62,0.74,0.68,0.79];
     const allHead = ["No","Item Name","Description","Image","Packing","Ctn","Doz/Ctn","Set/Ctn","Pcs/Set","Price/Set","T.Amount","CBM","T.CBM","Weight","T.Weight"];
-    const fitCols = (cols: number[]) => {
-      const sum = cols.reduce((s, v) => s + v, 0);
-      return cols.map((v) => +(v * 12.73 / sum).toFixed(3));
-    };
-    const colW = invoiceOnly ? fitCols(allColW.slice(0, 11)) : allColW;
+    const invoiceColW = [0.5,1.35,1.75,1.45,1.4,0.85,1.0,1.0,0.95,1.25,1.23];
+    const colW = invoiceOnly ? invoiceColW : allColW;
     const head = invoiceOnly ? allHead.slice(0, 11) : allHead;
     let runningIndex = 0;
     for (let p = 0; p < pages; p++) {
@@ -443,8 +440,8 @@ export default function ProformaApp() {
         const gi = runningIndex + idx + 1;
         const fullRow = [
           { text: String(gi), options: { align: "center", valign: "middle", bold: true } },
-          { text: r.itemName, options: { valign: "middle" } },
-          { text: r.description, options: { valign: "middle" } },
+          { text: r.itemName, options: { valign: "middle", fontSize: invoiceOnly ? 7.5 : 8.5 } },
+          { text: r.description, options: { valign: "middle", fontSize: invoiceOnly ? 7.5 : 8.5 } },
           { text: "" }, { text: "" },
           { text: r.ctn, options: { align: "center", bold: true } }, { text: r.dozCtn, options: { align: "center", bold: true } },
           { text: r.setCtn, options: { align: "center", bold: true } }, { text: r.pcsSet, options: { align: "center", bold: true } },
@@ -495,7 +492,7 @@ export default function ProformaApp() {
     toast.success("PPTX ✓");
   };
 
-  const onPrint = async () => { await flushSave(); setTimeout(() => window.print(), 200); };
+  const onPrint = () => { setTimeout(() => window.print(), 100); };
   const onSaveNow = async () => { await flushSave(); toast.success(lang === "ar" ? "تم الحفظ" : "Saved"); };
   const onLogout = async () => { await supabase.auth.signOut(); navigate({ to: "/auth" }); };
 
