@@ -172,7 +172,7 @@ export default function ProformaApp() {
   useEffect(() => {
     if (!loaded || loadFailed) return;
     if (proformas.length === 0) {
-      const p = newProforma(lang === "ar" ? "بروفورما 1" : "Proforma 1", 0);
+      const p = newProforma("New Proforma", 0);
       supabase.from("proformas").insert({ id: p.id, name: p.name, sort_order: 0, data: { meta: p.meta, rows: p.rows, themeColor: p.themeColor } }).then(loadAll);
       return;
     }
@@ -203,12 +203,6 @@ export default function ProformaApp() {
     setTimeout(() => setSaveState((s) => (s === "saved" ? "idle" : s)), 1500);
   }, [proformas]);
 
-  useEffect(() => {
-    if (!loaded || dirtyIds.current.size === 0) return;
-    const timer = window.setTimeout(() => { void flushSave(); }, 900);
-    return () => window.clearTimeout(timer);
-  }, [loaded, proformas, flushSave]);
-
   const markDirty = useCallback((id: string) => {
     dirtyIds.current.add(id);
     setSaveState((s) => (s === "saving" ? s : "idle"));
@@ -231,7 +225,7 @@ export default function ProformaApp() {
 
   /* ----- proforma management ----- */
   const createProforma = async () => {
-    const p = newProforma(lang === "ar" ? `بروفورما ${proformas.length+1}` : `Proforma ${proformas.length+1}`, proformas.length);
+    const p = newProforma("New Proforma", proformas.length);
     if (active) { p.meta = { ...active.meta, customer: "", date: new Date().toISOString().slice(0,10) }; p.themeColor = active.themeColor; }
     const { error } = await supabase.from("proformas").insert({ id: p.id, name: p.name, sort_order: p.sortOrder, data: { meta: p.meta, rows: p.rows, themeColor: p.themeColor, isPrimary: false } });
     if (error) { toast.error("فشل الإنشاء"); return; }
