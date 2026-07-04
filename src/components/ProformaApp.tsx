@@ -278,6 +278,7 @@ export default function ProformaApp() {
     try { localStorage.setItem(CACHE_KEY, JSON.stringify(next)); } catch {}
     const changed = next.filter((p) => p.isPrimary !== !!proformas.find((old) => old.id === p.id)?.isPrimary);
     toast.success(lang === "ar" ? "اتحدثت المكتبة فوراً" : "Library updated instantly");
+    void loadRowsForProforma(id);
     void Promise.all(changed.map((p) => supabase.from("proformas").update({ is_primary: !!p.isPrimary }).eq("id", p.id))).then((results) => {
       const failed = results.find((r) => r.error);
       if (failed?.error) { console.error(failed.error); changed.forEach((p) => markDirty(p.id)); toast.error("اتحدثت محلياً — اضغط Save Now للحفظ"); }
@@ -305,17 +306,22 @@ export default function ProformaApp() {
 
   const sendRowToProformas = (row: Row, targetIds: string[]) => {
     if (targetIds.length === 0) return;
-    const updated = proformas.map((p) => targetIds.includes(p.id) ? { ...p, rows: [...p.rows, { ...row, id: crypto.randomUUID() }] } : p);
+    const rowsByTarget = new Map(targetIds.map((id) => [id, { ...row, id: crypto.randomUUID() }]));
+    const updated = proformas.map((p) => {
+      const nextRow = rowsByTarget.get(p.id);
+      if (!nextRow) return p;
+      return p.rowsLoaded ? { ...p, rows: [...p.rows, nextRow] } : p;
+    });
     setProformas(updated);
     try { localStorage.setItem(CACHE_KEY, JSON.stringify(updated)); } catch {}
     toast.success(lang === "ar" ? `تم الإرسال إلى ${targetIds.length} بروفورما` : `Sent to ${targetIds.length} proforma(s)`);
-    void Promise.all(updated.filter((p) => targetIds.includes(p.id)).map((p) => supabase.from("proformas").update({
-      data: { meta: p.meta, rows: p.rows, themeColor: p.themeColor, isPrimary: !!p.isPrimary }
-    }).eq("id", p.id))).then((results) => {
+    void Promise.all(targetIds.map((targetId) => supabase.rpc("append_proforma_row", {
+      target_id: targetId,
+      new_row: rowsByTarget.get(targetId)!,
+    }))).then((results) => {
       const failed = results.find((r) => r.error);
       if (failed?.error) {
         console.error(failed.error);
-        updated.filter((p) => targetIds.includes(p.id)).forEach((p) => markDirty(p.id));
         toast.error("اتضاف محلياً — اضغط Save Now للحفظ");
       }
     });
