@@ -283,29 +283,31 @@ export default function ProformaApp() {
     setRows((rs) => { const i = rs.findIndex((r) => r.id === id); if (i < 0) return rs;
       const out = [...rs]; out.splice(i+1, 0, { ...rs[i], id: crypto.randomUUID() }); return out; });
 
-  const sendRowToProformas = async (row: Row, targetIds: string[]) => {
+  const sendRowToProformas = (row: Row, targetIds: string[]) => {
     if (targetIds.length === 0) return;
-    setSaveState("saving");
     const updated = proformas.map((p) => targetIds.includes(p.id) ? { ...p, rows: [...p.rows, { ...row, id: crypto.randomUUID() }] } : p);
     setProformas(updated);
     try { localStorage.setItem(CACHE_KEY, JSON.stringify(updated)); } catch {}
-    const results = await Promise.all(updated.filter((p) => targetIds.includes(p.id)).map((p) => supabase.from("proformas").update({
-      data: { meta: p.meta, rows: p.rows, themeColor: p.themeColor, isPrimary: !!p.isPrimary }
-    }).eq("id", p.id)));
-    const failed = results.find((r) => r.error);
-    if (failed?.error) { console.error(failed.error); toast.error("فشل الإرسال"); setSaveState("idle"); await loadAll(); return; }
-    setSaveState("saved"); setTimeout(() => setSaveState("idle"), 1500);
     toast.success(lang === "ar" ? `تم الإرسال إلى ${targetIds.length} بروفورما` : `Sent to ${targetIds.length} proforma(s)`);
+    void Promise.all(updated.filter((p) => targetIds.includes(p.id)).map((p) => supabase.from("proformas").update({
+      data: { meta: p.meta, rows: p.rows, themeColor: p.themeColor, isPrimary: !!p.isPrimary }
+    }).eq("id", p.id))).then((results) => {
+      const failed = results.find((r) => r.error);
+      if (failed?.error) {
+        console.error(failed.error);
+        updated.filter((p) => targetIds.includes(p.id)).forEach((p) => markDirty(p.id));
+        toast.error("اتضاف محلياً — اضغط Save Now للحفظ");
+      }
+    });
   };
 
   const library = useMemo(() => {
-    const seen = new Set<string>(); const items: { row: Row; from: string }[] = [];
+    const items: { row: Row; from: string }[] = [];
     const primary = proformas.find((p) => p.isPrimary);
     const sources = primary ? [primary] : proformas;
     sources.forEach((p) => p.rows.forEach((r) => {
       if (!r.itemName && !r.image) return;
-      const key = `${r.itemName}|${r.image.slice(0, 60)}`;
-      if (seen.has(key)) return; seen.add(key); items.push({ row: r, from: p.name });
+      items.push({ row: r, from: p.name });
     }));
     return items;
   }, [proformas]);
