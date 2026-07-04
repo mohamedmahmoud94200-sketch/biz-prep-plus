@@ -128,7 +128,7 @@ export default function ProformaApp() {
 
   /* ----- load ----- */
   const loadAll = useCallback(async () => {
-    const { data, error } = await supabase.from("proformas").select("id, name, data, sort_order").order("sort_order").order("created_at");
+    const { data, error } = await supabase.from("proformas").select("id, name, data, sort_order, is_primary").order("sort_order").order("created_at");
     if (error) { console.error(error); setLoadFailed(true); return false; }
     const list: Proforma[] = (data ?? []).map((r) => {
       const d = (r.data ?? {}) as Partial<Proforma>;
@@ -137,7 +137,7 @@ export default function ProformaApp() {
         meta: { ...defaultMeta(), ...(d.meta ?? {}) },
         rows: (d.rows ?? [newRow()]).map((x) => ({ ...newRow(), ...x })),
         themeColor: d.themeColor ?? "2BB39B",
-        isPrimary: d.isPrimary ?? false,
+        isPrimary: r.is_primary ?? d.isPrimary ?? false,
       };
     });
     setProformas(list);
@@ -173,7 +173,7 @@ export default function ProformaApp() {
     if (!loaded || loadFailed) return;
     if (proformas.length === 0) {
       const p = newProforma("New Proforma", 0);
-      supabase.from("proformas").insert({ id: p.id, name: p.name, sort_order: 0, data: { meta: p.meta, rows: p.rows, themeColor: p.themeColor } }).then(loadAll);
+      supabase.from("proformas").insert({ id: p.id, name: p.name, sort_order: 0, is_primary: false, data: { meta: p.meta, rows: p.rows, themeColor: p.themeColor } }).then(loadAll);
       return;
     }
     if (!activeId || !proformas.find((p) => p.id === activeId)) setActiveId(proformas[0].id);
@@ -194,7 +194,7 @@ export default function ProformaApp() {
     setSaveState("saving");
     const targets = proformas.filter((p) => ids.includes(p.id));
     const results = await Promise.all(targets.map((p) => supabase.from("proformas").upsert({
-        id: p.id, name: p.name, sort_order: p.sortOrder,
+        id: p.id, name: p.name, sort_order: p.sortOrder, is_primary: !!p.isPrimary,
         data: { meta: p.meta, rows: p.rows, themeColor: p.themeColor, isPrimary: !!p.isPrimary },
       })));
     const failed = results.find((r) => r.error);
@@ -227,7 +227,7 @@ export default function ProformaApp() {
   const createProforma = async () => {
     const p = newProforma("New Proforma", proformas.length);
     if (active) { p.meta = { ...active.meta, customer: "", date: new Date().toISOString().slice(0,10) }; p.themeColor = active.themeColor; }
-    const { error } = await supabase.from("proformas").insert({ id: p.id, name: p.name, sort_order: p.sortOrder, data: { meta: p.meta, rows: p.rows, themeColor: p.themeColor, isPrimary: false } });
+    const { error } = await supabase.from("proformas").insert({ id: p.id, name: p.name, sort_order: p.sortOrder, is_primary: false, data: { meta: p.meta, rows: p.rows, themeColor: p.themeColor, isPrimary: false } });
     if (error) { toast.error("فشل الإنشاء"); return; }
     const next = [...proformas, p];
     setProformas(next); setActiveId(p.id);
@@ -256,9 +256,7 @@ export default function ProformaApp() {
     try { localStorage.setItem(CACHE_KEY, JSON.stringify(next)); } catch {}
     const changed = next.filter((p) => p.isPrimary !== !!proformas.find((old) => old.id === p.id)?.isPrimary);
     toast.success(lang === "ar" ? "اتحدثت المكتبة فوراً" : "Library updated instantly");
-    void Promise.all(changed.map((p) => supabase.from("proformas").update({
-      data: { meta: p.meta, rows: p.rows, themeColor: p.themeColor, isPrimary: !!p.isPrimary },
-    }).eq("id", p.id))).then((results) => {
+    void Promise.all(changed.map((p) => supabase.from("proformas").update({ is_primary: !!p.isPrimary }).eq("id", p.id))).then((results) => {
       const failed = results.find((r) => r.error);
       if (failed?.error) { console.error(failed.error); changed.forEach((p) => markDirty(p.id)); toast.error("اتحدثت محلياً — اضغط Save Now للحفظ"); }
     });
