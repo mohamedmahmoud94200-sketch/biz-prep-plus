@@ -19,6 +19,7 @@ export type Database = {
           created_at: string
           data: Json
           id: string
+          is_primary: boolean
           name: string
           sort_order: number
           updated_at: string
@@ -27,6 +28,7 @@ export type Database = {
           created_at?: string
           data?: Json
           id?: string
+          is_primary?: boolean
           name?: string
           sort_order?: number
           updated_at?: string
@@ -35,6 +37,7 @@ export type Database = {
           created_at?: string
           data?: Json
           id?: string
+          is_primary?: boolean
           name?: string
           sort_order?: number
           updated_at?: string
