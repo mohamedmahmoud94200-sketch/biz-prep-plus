@@ -23,11 +23,12 @@ type Meta = {
 };
 type Proforma = {
   id: string; name: string; meta: Meta; rows: Row[]; themeColor: string; sortOrder: number; isPrimary?: boolean;
+  rowsLoaded?: boolean;
 };
 type Lang = "ar" | "en";
 
 const LANG_KEY = "proforma-lang";
-const CACHE_KEY = "proforma-cache-v2";
+const CACHE_KEY = "proforma-cache-v3";
 
 const T = {
   ar: {
@@ -79,7 +80,7 @@ const THEME_PRESETS = [
 ];
 const newProforma = (name: string, sortOrder = 0): Proforma => ({
   id: crypto.randomUUID(), name, meta: defaultMeta(), rows: [newRow()],
-  themeColor: "2BB39B", sortOrder,
+  themeColor: "2BB39B", sortOrder, rowsLoaded: true,
 });
 
 const num = (s: string) => parseFloat(s || "0") || 0;
@@ -128,16 +129,24 @@ export default function ProformaApp() {
 
   /* ----- load ----- */
   const loadAll = useCallback(async () => {
-    const { data, error } = await supabase.from("proformas").select("id, name, data, sort_order").order("sort_order").order("created_at");
+    const { data, error } = await supabase.from("proformas").select("id, name, sort_order, is_primary").order("sort_order").order("created_at");
     if (error) { console.error(error); setLoadFailed(true); return false; }
-    const list: Proforma[] = (data ?? []).map((r) => {
-      const d = (r.data ?? {}) as Partial<Proforma>;
+    const heads = data ?? [];
+    const loadId = heads.find((r) => r.is_primary)?.id ?? (heads.length === 1 ? heads[0]?.id : undefined);
+    let loadedData: Partial<Proforma> = {};
+    if (loadId) {
+      const full = await supabase.from("proformas").select("data").eq("id", loadId).single();
+      if (!full.error) loadedData = (full.data?.data ?? {}) as Partial<Proforma>;
+    }
+    const list: Proforma[] = heads.map((r) => {
+      const d = r.id === loadId ? loadedData : {};
       return {
         id: r.id, name: r.name, sortOrder: r.sort_order,
         meta: { ...defaultMeta(), ...(d.meta ?? {}) },
-        rows: (d.rows ?? [newRow()]).map((x) => ({ ...newRow(), ...x })),
+        rows: (r.id === loadId ? (d.rows ?? [newRow()]) : []).map((x) => ({ ...newRow(), ...x })),
         themeColor: d.themeColor ?? "2BB39B",
-        isPrimary: d.isPrimary ?? false,
+        isPrimary: r.is_primary ?? d.isPrimary ?? false,
+        rowsLoaded: r.id === loadId,
       };
     });
     setProformas(list);
@@ -163,6 +172,15 @@ export default function ProformaApp() {
     })();
   }, [loadAll]);
 
+  const loadRowsForProforma = useCallback(async (id: string) => {
+    const existing = proformas.find((p) => p.id === id);
+    if (!existing || existing.rowsLoaded) return;
+    const { data, error } = await supabase.from("proformas").select("data").eq("id", id).single();
+    if (error) { console.error(error); toast.error("فشل تحميل البروفورما"); return; }
+    const d = (data?.data ?? {}) as Partial<Proforma>;
+    setProformas((ps) => ps.map((p) => p.id === id ? { ...p, rows: (d.rows ?? [newRow()]).map((x) => ({ ...newRow(), ...x })), rowsLoaded: true } : p));
+  }, [proformas]);
+
   useEffect(() => {
     if (!loaded || proformas.length === 0) return;
     try { localStorage.setItem(CACHE_KEY, JSON.stringify(proformas)); } catch {}
@@ -172,11 +190,11 @@ export default function ProformaApp() {
   useEffect(() => {
     if (!loaded || loadFailed) return;
     if (proformas.length === 0) {
-      const p = newProforma(lang === "ar" ? "بروفورما 1" : "Proforma 1", 0);
-      supabase.from("proformas").insert({ id: p.id, name: p.name, sort_order: 0, data: { meta: p.meta, rows: p.rows, themeColor: p.themeColor } }).then(loadAll);
+      const p = newProforma("New Proforma", 0);
+      supabase.from("proformas").insert({ id: p.id, name: p.name, sort_order: 0, is_primary: false, data: { meta: p.meta, rows: p.rows, themeColor: p.themeColor } }).then(loadAll);
       return;
     }
-    if (!activeId || !proformas.find((p) => p.id === activeId)) setActiveId(proformas[0].id);
+    if (!activeId || !proformas.find((p) => p.id === activeId)) setActiveId((proformas.find((p) => p.isPrimary) ?? proformas[0]).id);
   }, [loaded, loadFailed, proformas, activeId, lang, loadAll]);
 
   useEffect(() => { try { localStorage.setItem(LANG_KEY, lang); } catch {} }, [lang]);
@@ -187,6 +205,10 @@ export default function ProformaApp() {
   const themeColor = active?.themeColor ?? "2BB39B";
   const accent = `#${themeColor}`;
 
+  useEffect(() => {
+    if (loaded && active && !active.rowsLoaded) void loadRowsForProforma(active.id);
+  }, [loaded, active, loadRowsForProforma]);
+
   /* ----- save logic ----- */
   const flushSave = useCallback(async () => {
     if (dirtyIds.current.size === 0) return;
@@ -194,7 +216,7 @@ export default function ProformaApp() {
     setSaveState("saving");
     const targets = proformas.filter((p) => ids.includes(p.id));
     const results = await Promise.all(targets.map((p) => supabase.from("proformas").upsert({
-        id: p.id, name: p.name, sort_order: p.sortOrder,
+        id: p.id, name: p.name, sort_order: p.sortOrder, is_primary: !!p.isPrimary,
         data: { meta: p.meta, rows: p.rows, themeColor: p.themeColor, isPrimary: !!p.isPrimary },
       })));
     const failed = results.find((r) => r.error);
@@ -202,12 +224,6 @@ export default function ProformaApp() {
     setSaveState("saved");
     setTimeout(() => setSaveState((s) => (s === "saved" ? "idle" : s)), 1500);
   }, [proformas]);
-
-  useEffect(() => {
-    if (!loaded || dirtyIds.current.size === 0) return;
-    const timer = window.setTimeout(() => { void flushSave(); }, 900);
-    return () => window.clearTimeout(timer);
-  }, [loaded, proformas, flushSave]);
 
   const markDirty = useCallback((id: string) => {
     dirtyIds.current.add(id);
@@ -231,9 +247,9 @@ export default function ProformaApp() {
 
   /* ----- proforma management ----- */
   const createProforma = async () => {
-    const p = newProforma(lang === "ar" ? `بروفورما ${proformas.length+1}` : `Proforma ${proformas.length+1}`, proformas.length);
+    const p = newProforma("New Proforma", proformas.length);
     if (active) { p.meta = { ...active.meta, customer: "", date: new Date().toISOString().slice(0,10) }; p.themeColor = active.themeColor; }
-    const { error } = await supabase.from("proformas").insert({ id: p.id, name: p.name, sort_order: p.sortOrder, data: { meta: p.meta, rows: p.rows, themeColor: p.themeColor, isPrimary: false } });
+    const { error } = await supabase.from("proformas").insert({ id: p.id, name: p.name, sort_order: p.sortOrder, is_primary: false, data: { meta: p.meta, rows: p.rows, themeColor: p.themeColor, isPrimary: false } });
     if (error) { toast.error("فشل الإنشاء"); return; }
     const next = [...proformas, p];
     setProformas(next); setActiveId(p.id);
@@ -261,15 +277,12 @@ export default function ProformaApp() {
     setProformas(next);
     try { localStorage.setItem(CACHE_KEY, JSON.stringify(next)); } catch {}
     const changed = next.filter((p) => p.isPrimary !== !!proformas.find((old) => old.id === p.id)?.isPrimary);
-    setSaveState("saving");
-    const results = await Promise.all(changed.map((p) => supabase.from("proformas").update({
-      data: { meta: p.meta, rows: p.rows, themeColor: p.themeColor, isPrimary: !!p.isPrimary },
-    }).eq("id", p.id)));
-    const failed = results.find((r) => r.error);
-    if (failed?.error) { console.error(failed.error); changed.forEach((p) => markDirty(p.id)); toast.error("فشل الحفظ / Save failed"); setSaveState("idle"); return; }
-    setSaveState("saved");
-    setTimeout(() => setSaveState("idle"), 1200);
     toast.success(lang === "ar" ? "اتحدثت المكتبة فوراً" : "Library updated instantly");
+    void loadRowsForProforma(id);
+    void Promise.all(changed.map((p) => supabase.from("proformas").update({ is_primary: !!p.isPrimary }).eq("id", p.id))).then((results) => {
+      const failed = results.find((r) => r.error);
+      if (failed?.error) { console.error(failed.error); changed.forEach((p) => markDirty(p.id)); toast.error("اتحدثت محلياً — اضغط Save Now للحفظ"); }
+    });
   };
 
   const totals = useMemo(() => {
@@ -291,29 +304,36 @@ export default function ProformaApp() {
     setRows((rs) => { const i = rs.findIndex((r) => r.id === id); if (i < 0) return rs;
       const out = [...rs]; out.splice(i+1, 0, { ...rs[i], id: crypto.randomUUID() }); return out; });
 
-  const sendRowToProformas = async (row: Row, targetIds: string[]) => {
+  const sendRowToProformas = (row: Row, targetIds: string[]) => {
     if (targetIds.length === 0) return;
-    setSaveState("saving");
-    const updated = proformas.map((p) => targetIds.includes(p.id) ? { ...p, rows: [...p.rows, { ...row, id: crypto.randomUUID() }] } : p);
+    const rowsByTarget = new Map(targetIds.map((id) => [id, { ...row, id: crypto.randomUUID() }]));
+    const updated = proformas.map((p) => {
+      const nextRow = rowsByTarget.get(p.id);
+      if (!nextRow) return p;
+      return p.rowsLoaded ? { ...p, rows: [...p.rows, nextRow] } : p;
+    });
     setProformas(updated);
     try { localStorage.setItem(CACHE_KEY, JSON.stringify(updated)); } catch {}
-    const results = await Promise.all(updated.filter((p) => targetIds.includes(p.id)).map((p) => supabase.from("proformas").update({
-      data: { meta: p.meta, rows: p.rows, themeColor: p.themeColor, isPrimary: !!p.isPrimary }
-    }).eq("id", p.id)));
-    const failed = results.find((r) => r.error);
-    if (failed?.error) { console.error(failed.error); toast.error("فشل الإرسال"); setSaveState("idle"); await loadAll(); return; }
-    setSaveState("saved"); setTimeout(() => setSaveState("idle"), 1500);
     toast.success(lang === "ar" ? `تم الإرسال إلى ${targetIds.length} بروفورما` : `Sent to ${targetIds.length} proforma(s)`);
+    void Promise.all(targetIds.map((targetId) => supabase.rpc("append_proforma_row", {
+      target_id: targetId,
+      new_row: rowsByTarget.get(targetId)!,
+    }))).then((results) => {
+      const failed = results.find((r) => r.error);
+      if (failed?.error) {
+        console.error(failed.error);
+        toast.error("اتضاف محلياً — اضغط Save Now للحفظ");
+      }
+    });
   };
 
   const library = useMemo(() => {
-    const seen = new Set<string>(); const items: { row: Row; from: string }[] = [];
+    const items: { row: Row; from: string }[] = [];
     const primary = proformas.find((p) => p.isPrimary);
     const sources = primary ? [primary] : proformas;
     sources.forEach((p) => p.rows.forEach((r) => {
       if (!r.itemName && !r.image) return;
-      const key = `${r.itemName}|${r.image.slice(0, 60)}`;
-      if (seen.has(key)) return; seen.add(key); items.push({ row: r, from: p.name });
+      items.push({ row: r, from: p.name });
     }));
     return items;
   }, [proformas]);
@@ -412,11 +432,8 @@ export default function ProformaApp() {
     // Column widths must sum to table width (12.73)
     const allColW = [0.40,1.24,1.58,1.02,1.02,0.62,0.74,0.74,0.68,0.91,0.96,0.62,0.74,0.68,0.79];
     const allHead = ["No","Item Name","Description","Image","Packing","Ctn","Doz/Ctn","Set/Ctn","Pcs/Set","Price/Set","T.Amount","CBM","T.CBM","Weight","T.Weight"];
-    const fitCols = (cols: number[]) => {
-      const sum = cols.reduce((s, v) => s + v, 0);
-      return cols.map((v) => +(v * 12.73 / sum).toFixed(3));
-    };
-    const colW = invoiceOnly ? fitCols(allColW.slice(0, 11)) : allColW;
+    const invoiceColW = [0.5,1.35,1.75,1.45,1.4,0.85,1.0,1.0,0.95,1.25,1.23];
+    const colW = invoiceOnly ? invoiceColW : allColW;
     const head = invoiceOnly ? allHead.slice(0, 11) : allHead;
     let runningIndex = 0;
     for (let p = 0; p < pages; p++) {
@@ -449,8 +466,8 @@ export default function ProformaApp() {
         const gi = runningIndex + idx + 1;
         const fullRow = [
           { text: String(gi), options: { align: "center", valign: "middle", bold: true } },
-          { text: r.itemName, options: { valign: "middle" } },
-          { text: r.description, options: { valign: "middle" } },
+          { text: r.itemName, options: { valign: "middle", fontSize: invoiceOnly ? 7.5 : 8.5 } },
+          { text: r.description, options: { valign: "middle", fontSize: invoiceOnly ? 7.5 : 8.5 } },
           { text: "" }, { text: "" },
           { text: r.ctn, options: { align: "center", bold: true } }, { text: r.dozCtn, options: { align: "center", bold: true } },
           { text: r.setCtn, options: { align: "center", bold: true } }, { text: r.pcsSet, options: { align: "center", bold: true } },
@@ -501,7 +518,7 @@ export default function ProformaApp() {
     toast.success("PPTX ✓");
   };
 
-  const onPrint = async () => { await flushSave(); setTimeout(() => window.print(), 200); };
+  const onPrint = () => { setTimeout(() => window.print(), 100); };
   const onSaveNow = async () => { await flushSave(); toast.success(lang === "ar" ? "تم الحفظ" : "Saved"); };
   const onLogout = async () => { await supabase.auth.signOut(); navigate({ to: "/auth" }); };
 
@@ -695,6 +712,18 @@ export default function ProformaApp() {
         #printable.pdf-capture .footer-text { display: block !important; color: #ffffff !important; }
         #printable.pdf-capture.invoice-capture th:nth-child(n+12),
         #printable.pdf-capture.invoice-capture td:nth-child(n+12) { display: none !important; }
+        #printable.pdf-capture.invoice-capture table { table-layout: fixed !important; }
+        #printable.pdf-capture.invoice-capture th:nth-child(1), #printable.pdf-capture.invoice-capture td:nth-child(1) { width: 55px !important; }
+        #printable.pdf-capture.invoice-capture th:nth-child(2), #printable.pdf-capture.invoice-capture td:nth-child(2) { width: 170px !important; max-width: 170px !important; }
+        #printable.pdf-capture.invoice-capture th:nth-child(3), #printable.pdf-capture.invoice-capture td:nth-child(3) { width: 220px !important; max-width: 220px !important; }
+        #printable.pdf-capture.invoice-capture th:nth-child(4), #printable.pdf-capture.invoice-capture td:nth-child(4),
+        #printable.pdf-capture.invoice-capture th:nth-child(5), #printable.pdf-capture.invoice-capture td:nth-child(5) { width: 135px !important; }
+        #printable.pdf-capture.invoice-capture th:nth-child(6), #printable.pdf-capture.invoice-capture td:nth-child(6) { width: 80px !important; }
+        #printable.pdf-capture.invoice-capture th:nth-child(7), #printable.pdf-capture.invoice-capture td:nth-child(7),
+        #printable.pdf-capture.invoice-capture th:nth-child(8), #printable.pdf-capture.invoice-capture td:nth-child(8),
+        #printable.pdf-capture.invoice-capture th:nth-child(9), #printable.pdf-capture.invoice-capture td:nth-child(9) { width: 95px !important; }
+        #printable.pdf-capture.invoice-capture th:nth-child(10), #printable.pdf-capture.invoice-capture td:nth-child(10),
+        #printable.pdf-capture.invoice-capture th:nth-child(11), #printable.pdf-capture.invoice-capture td:nth-child(11) { width: 120px !important; }
         #printable.pdf-capture.invoice-capture .totals-row > div:nth-child(2),
         #printable.pdf-capture.invoice-capture .totals-row > div:nth-child(3) { display: none !important; }
         input[type="number"]::-webkit-outer-spin-button,

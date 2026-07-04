@@ -19,6 +19,7 @@ export type Database = {
           created_at: string
           data: Json
           id: string
+          is_primary: boolean
           name: string
           sort_order: number
           updated_at: string
@@ -27,6 +28,7 @@ export type Database = {
           created_at?: string
           data?: Json
           id?: string
+          is_primary?: boolean
           name?: string
           sort_order?: number
           updated_at?: string
@@ -35,6 +37,7 @@ export type Database = {
           created_at?: string
           data?: Json
           id?: string
+          is_primary?: boolean
           name?: string
           sort_order?: number
           updated_at?: string
@@ -46,7 +49,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      append_proforma_row: {
+        Args: { new_row: Json; target_id: string }
+        Returns: undefined
+      }
     }
     Enums: {
       [_ in never]: never
