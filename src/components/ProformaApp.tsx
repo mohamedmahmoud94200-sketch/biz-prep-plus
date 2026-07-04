@@ -255,15 +255,13 @@ export default function ProformaApp() {
     setProformas(next);
     try { localStorage.setItem(CACHE_KEY, JSON.stringify(next)); } catch {}
     const changed = next.filter((p) => p.isPrimary !== !!proformas.find((old) => old.id === p.id)?.isPrimary);
-    setSaveState("saving");
-    const results = await Promise.all(changed.map((p) => supabase.from("proformas").update({
-      data: { meta: p.meta, rows: p.rows, themeColor: p.themeColor, isPrimary: !!p.isPrimary },
-    }).eq("id", p.id)));
-    const failed = results.find((r) => r.error);
-    if (failed?.error) { console.error(failed.error); changed.forEach((p) => markDirty(p.id)); toast.error("فشل الحفظ / Save failed"); setSaveState("idle"); return; }
-    setSaveState("saved");
-    setTimeout(() => setSaveState("idle"), 1200);
     toast.success(lang === "ar" ? "اتحدثت المكتبة فوراً" : "Library updated instantly");
+    void Promise.all(changed.map((p) => supabase.from("proformas").update({
+      data: { meta: p.meta, rows: p.rows, themeColor: p.themeColor, isPrimary: !!p.isPrimary },
+    }).eq("id", p.id))).then((results) => {
+      const failed = results.find((r) => r.error);
+      if (failed?.error) { console.error(failed.error); changed.forEach((p) => markDirty(p.id)); toast.error("اتحدثت محلياً — اضغط Save Now للحفظ"); }
+    });
   };
 
   const totals = useMemo(() => {
