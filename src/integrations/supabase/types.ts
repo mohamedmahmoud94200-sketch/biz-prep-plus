@@ -49,7 +49,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      append_proforma_row: {
+        Args: { new_row: Json; target_id: string }
+        Returns: undefined
+      }
     }
     Enums: {
       [_ in never]: never
