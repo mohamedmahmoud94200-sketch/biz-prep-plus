@@ -47,7 +47,7 @@ const T = {
   },
   en: {
     print: "Print", pdf: "PDF", pptx: "PowerPoint", createInvoice: "Create Invoice",
-    newInvoice: "New Invoice", addItem: "Add Item", library: "Library",
+    newInvoice: "New Proforma", addItem: "Add Item", library: "Library",
     theme: "Theme", save: "Save Now", saved: "Saved ☁", saving: "Saving…",
     lang: "ع", customer: "CUSTOMER", date: "DATE",
     cols: ["No","Item Name","Description","Image","Packing","Ctn","Doz/Ctn","Set/Ctn","Pcs/Set","Price/Set","T.Amount","CBM","T.CBM","Weight","T.Weight","Actions"],
