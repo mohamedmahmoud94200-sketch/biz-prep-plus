@@ -322,8 +322,8 @@ export default function ProformaApp() {
 
   const library = useMemo(() => {
     const items: { row: Row; from: string }[] = [];
-    const primary = proformas.find((p) => p.isPrimary);
-    const sources = primary ? [primary] : proformas;
+    const primaries = proformas.filter((p) => p.isPrimary);
+    const sources = primaries.length > 0 ? primaries : proformas;
     sources.forEach((p) => p.rows.forEach((r) => {
       if (!r.itemName && !r.image) return;
       items.push({ row: r, from: p.name });
