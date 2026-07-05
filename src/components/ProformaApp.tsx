@@ -129,24 +129,18 @@ export default function ProformaApp() {
 
   /* ----- load ----- */
   const loadAll = useCallback(async () => {
-    const { data, error } = await supabase.from("proformas").select("id, name, sort_order, is_primary").order("sort_order").order("created_at");
+    const { data, error } = await supabase.from("proformas").select("id, name, sort_order, is_primary, data").order("sort_order").order("created_at");
     if (error) { console.error(error); setLoadFailed(true); return false; }
     const heads = data ?? [];
-    const loadId = heads.find((r) => r.is_primary)?.id ?? (heads.length === 1 ? heads[0]?.id : undefined);
-    let loadedData: Partial<Proforma> = {};
-    if (loadId) {
-      const full = await supabase.from("proformas").select("data").eq("id", loadId).single();
-      if (!full.error) loadedData = (full.data?.data ?? {}) as Partial<Proforma>;
-    }
     const list: Proforma[] = heads.map((r) => {
-      const d = r.id === loadId ? loadedData : {};
+      const d = (r.data ?? {}) as Partial<Proforma>;
       return {
         id: r.id, name: r.name, sortOrder: r.sort_order,
         meta: { ...defaultMeta(), ...(d.meta ?? {}) },
-        rows: (r.id === loadId ? (d.rows ?? [newRow()]) : []).map((x) => ({ ...newRow(), ...x })),
+        rows: (d.rows ?? [newRow()]).map((x) => ({ ...newRow(), ...x })),
         themeColor: d.themeColor ?? "2BB39B",
         isPrimary: r.is_primary ?? d.isPrimary ?? false,
-        rowsLoaded: r.id === loadId,
+        rowsLoaded: true,
       };
     });
     setProformas(list);
