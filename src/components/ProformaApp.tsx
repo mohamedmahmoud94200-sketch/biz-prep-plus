@@ -267,13 +267,13 @@ export default function ProformaApp() {
   };
 
   const togglePrimary = async (id: string) => {
-    const next = proformas.map((p) => ({ ...p, isPrimary: p.id === id ? !p.isPrimary : false }));
+    const next = proformas.map((p) => (p.id === id ? { ...p, isPrimary: !p.isPrimary } : p));
     setProformas(next);
     try { localStorage.setItem(CACHE_KEY, JSON.stringify(next)); } catch {}
-    const changed = next.filter((p) => p.isPrimary !== !!proformas.find((old) => old.id === p.id)?.isPrimary);
+    const target = next.find((p) => p.id === id);
+    if (!target) return;
     toast.success(lang === "ar" ? "اتحدثت المكتبة فوراً" : "Library updated instantly");
-    void loadRowsForProforma(id);
-    void Promise.all(changed.map((p) => supabase.from("proformas").update({ is_primary: !!p.isPrimary }).eq("id", p.id))).then((results) => {
+    void supabase.from("proformas").update({ is_primary: !!target.isPrimary }).eq("id", id).then((res) => {
       const failed = results.find((r) => r.error);
       if (failed?.error) { console.error(failed.error); changed.forEach((p) => markDirty(p.id)); toast.error("اتحدثت محلياً — اضغط Save Now للحفظ"); }
     });
