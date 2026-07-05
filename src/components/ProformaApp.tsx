@@ -47,7 +47,7 @@ const T = {
   },
   en: {
     print: "Print", pdf: "PDF", pptx: "PowerPoint", createInvoice: "Create Invoice",
-    newInvoice: "New Invoice", addItem: "Add Item", library: "Library",
+    newInvoice: "New Proforma", addItem: "Add Item", library: "Library",
     theme: "Theme", save: "Save Now", saved: "Saved ☁", saving: "Saving…",
     lang: "ع", customer: "CUSTOMER", date: "DATE",
     cols: ["No","Item Name","Description","Image","Packing","Ctn","Doz/Ctn","Set/Ctn","Pcs/Set","Price/Set","T.Amount","CBM","T.CBM","Weight","T.Weight","Actions"],
@@ -129,24 +129,18 @@ export default function ProformaApp() {
 
   /* ----- load ----- */
   const loadAll = useCallback(async () => {
-    const { data, error } = await supabase.from("proformas").select("id, name, sort_order, is_primary").order("sort_order").order("created_at");
+    const { data, error } = await supabase.from("proformas").select("id, name, sort_order, is_primary, data").order("sort_order").order("created_at");
     if (error) { console.error(error); setLoadFailed(true); return false; }
     const heads = data ?? [];
-    const loadId = heads.find((r) => r.is_primary)?.id ?? (heads.length === 1 ? heads[0]?.id : undefined);
-    let loadedData: Partial<Proforma> = {};
-    if (loadId) {
-      const full = await supabase.from("proformas").select("data").eq("id", loadId).single();
-      if (!full.error) loadedData = (full.data?.data ?? {}) as Partial<Proforma>;
-    }
     const list: Proforma[] = heads.map((r) => {
-      const d = r.id === loadId ? loadedData : {};
+      const d = (r.data ?? {}) as Partial<Proforma>;
       return {
         id: r.id, name: r.name, sortOrder: r.sort_order,
         meta: { ...defaultMeta(), ...(d.meta ?? {}) },
-        rows: (r.id === loadId ? (d.rows ?? [newRow()]) : []).map((x) => ({ ...newRow(), ...x })),
+        rows: (d.rows ?? [newRow()]).map((x) => ({ ...newRow(), ...x })),
         themeColor: d.themeColor ?? "2BB39B",
         isPrimary: r.is_primary ?? d.isPrimary ?? false,
-        rowsLoaded: r.id === loadId,
+        rowsLoaded: true,
       };
     });
     setProformas(list);
@@ -273,15 +267,14 @@ export default function ProformaApp() {
   };
 
   const togglePrimary = async (id: string) => {
-    const next = proformas.map((p) => ({ ...p, isPrimary: p.id === id ? !p.isPrimary : false }));
+    const next = proformas.map((p) => (p.id === id ? { ...p, isPrimary: !p.isPrimary } : p));
     setProformas(next);
     try { localStorage.setItem(CACHE_KEY, JSON.stringify(next)); } catch {}
-    const changed = next.filter((p) => p.isPrimary !== !!proformas.find((old) => old.id === p.id)?.isPrimary);
+    const target = next.find((p) => p.id === id);
+    if (!target) return;
     toast.success(lang === "ar" ? "اتحدثت المكتبة فوراً" : "Library updated instantly");
-    void loadRowsForProforma(id);
-    void Promise.all(changed.map((p) => supabase.from("proformas").update({ is_primary: !!p.isPrimary }).eq("id", p.id))).then((results) => {
-      const failed = results.find((r) => r.error);
-      if (failed?.error) { console.error(failed.error); changed.forEach((p) => markDirty(p.id)); toast.error("اتحدثت محلياً — اضغط Save Now للحفظ"); }
+    void supabase.from("proformas").update({ is_primary: !!target.isPrimary }).eq("id", id).then((res) => {
+      if (res.error) { console.error(res.error); markDirty(id); toast.error("اتحدثت محلياً — اضغط Save Now للحفظ"); }
     });
   };
 
@@ -329,8 +322,8 @@ export default function ProformaApp() {
 
   const library = useMemo(() => {
     const items: { row: Row; from: string }[] = [];
-    const primary = proformas.find((p) => p.isPrimary);
-    const sources = primary ? [primary] : proformas;
+    const primaries = proformas.filter((p) => p.isPrimary);
+    const sources = primaries.length > 0 ? primaries : proformas;
     sources.forEach((p) => p.rows.forEach((r) => {
       if (!r.itemName && !r.image) return;
       items.push({ row: r, from: p.name });
