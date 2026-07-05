@@ -274,8 +274,7 @@ export default function ProformaApp() {
     if (!target) return;
     toast.success(lang === "ar" ? "اتحدثت المكتبة فوراً" : "Library updated instantly");
     void supabase.from("proformas").update({ is_primary: !!target.isPrimary }).eq("id", id).then((res) => {
-      const failed = results.find((r) => r.error);
-      if (failed?.error) { console.error(failed.error); changed.forEach((p) => markDirty(p.id)); toast.error("اتحدثت محلياً — اضغط Save Now للحفظ"); }
+      if (res.error) { console.error(res.error); markDirty(id); toast.error("اتحدثت محلياً — اضغط Save Now للحفظ"); }
     });
   };
 
