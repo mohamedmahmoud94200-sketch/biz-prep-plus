@@ -28,7 +28,7 @@ type Proforma = {
 type Lang = "ar" | "en";
 
 const LANG_KEY = "proforma-lang";
-const CACHE_KEY = "proforma-cache-v4";
+const CACHE_KEY = "proforma-cache-v3";
 
 const T = {
   ar: {
@@ -166,6 +166,15 @@ export default function ProformaApp() {
     })();
   }, [loadAll]);
 
+  const loadRowsForProforma = useCallback(async (id: string) => {
+    const existing = proformas.find((p) => p.id === id);
+    if (!existing || existing.rowsLoaded) return;
+    const { data, error } = await supabase.from("proformas").select("data").eq("id", id).single();
+    if (error) { console.error(error); toast.error("فشل تحميل البروفورما"); return; }
+    const d = (data?.data ?? {}) as Partial<Proforma>;
+    setProformas((ps) => ps.map((p) => p.id === id ? { ...p, rows: (d.rows ?? [newRow()]).map((x) => ({ ...newRow(), ...x })), rowsLoaded: true } : p));
+  }, [proformas]);
+
   useEffect(() => {
     if (!loaded || proformas.length === 0) return;
     try { localStorage.setItem(CACHE_KEY, JSON.stringify(proformas)); } catch {}
@@ -189,6 +198,10 @@ export default function ProformaApp() {
   const rows = active?.rows ?? [];
   const themeColor = active?.themeColor ?? "2BB39B";
   const accent = `#${themeColor}`;
+
+  useEffect(() => {
+    if (loaded && active && !active.rowsLoaded) void loadRowsForProforma(active.id);
+  }, [loaded, active, loadRowsForProforma]);
 
   /* ----- save logic ----- */
   const flushSave = useCallback(async () => {
