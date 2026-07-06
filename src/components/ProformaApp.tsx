@@ -156,24 +156,58 @@ export default function ProformaApp() {
 
   /* ----- load ----- */
   const loadAll = useCallback(async () => {
-    const { data, error } = await supabase.from("proformas").select("id, name, sort_order, is_primary, data").order("sort_order").order("created_at");
+    // Step 1: fetch metadata only (fast, no huge base64 images).
+    const { data: heads, error } = await supabase
+      .from("proformas")
+      .select("id, name, sort_order, is_primary")
+      .order("sort_order")
+      .order("created_at");
     if (error) { console.error(error); setLoadFailed(true); return false; }
     const deletedIds = getDeletedIds();
-    const heads = data ?? [];
-    const list: Proforma[] = heads.filter((r) => !deletedIds.has(r.id)).map((r) => {
-      const d = (r.data ?? {}) as Partial<Proforma>;
+    const safeHeads = (heads ?? []).filter((r) => !deletedIds.has(r.id));
+
+    // Merge with cached rows/meta so items appear immediately.
+    let cached: Proforma[] = [];
+    try { cached = JSON.parse(localStorage.getItem(CACHE_KEY) || "[]") as Proforma[]; } catch {}
+    const cacheMap = new Map(cached.map((p) => [p.id, p]));
+
+    const list: Proforma[] = safeHeads.map((r) => {
+      const c = cacheMap.get(r.id);
       return {
-        id: r.id, name: r.name, sortOrder: r.sort_order,
-        meta: { ...defaultMeta(), ...(d.meta ?? {}) },
-        rows: (d.rows ?? [newRow()]).map((x) => ({ ...newRow(), ...x })),
-        themeColor: d.themeColor ?? "2BB39B",
-        isPrimary: r.is_primary ?? d.isPrimary ?? false,
-        rowsLoaded: true,
+        id: r.id,
+        name: r.name,
+        sortOrder: r.sort_order,
+        isPrimary: r.is_primary ?? false,
+        meta: c?.meta ?? defaultMeta(),
+        rows: c?.rows ?? [newRow()],
+        themeColor: c?.themeColor ?? "2BB39B",
+        rowsLoaded: !!c?.rowsLoaded,
       };
     });
     setProformas(list);
     try { localStorage.setItem(CACHE_KEY, JSON.stringify(list)); } catch {}
     setLoadFailed(false);
+
+    // Step 2: hydrate data field per proforma in background (serial to avoid timeouts).
+    (async () => {
+      for (const h of safeHeads) {
+        const { data: row, error: rowErr } = await supabase
+          .from("proformas").select("data").eq("id", h.id).maybeSingle();
+        if (rowErr || !row) { if (rowErr) console.error(rowErr); continue; }
+        const d = (row.data ?? {}) as Partial<Proforma>;
+        setProformas((ps) => {
+          const next = ps.map((p) => p.id === h.id ? {
+            ...p,
+            meta: { ...defaultMeta(), ...(d.meta ?? {}) },
+            rows: (d.rows ?? [newRow()]).map((x) => ({ ...newRow(), ...x })),
+            themeColor: d.themeColor ?? p.themeColor,
+            rowsLoaded: true,
+          } : p);
+          try { localStorage.setItem(CACHE_KEY, JSON.stringify(next)); } catch {}
+          return next;
+        });
+      }
+    })();
     return true;
   }, []);
 
