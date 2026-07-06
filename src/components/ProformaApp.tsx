@@ -28,7 +28,8 @@ type Proforma = {
 type Lang = "ar" | "en";
 
 const LANG_KEY = "proforma-lang";
-const CACHE_KEY = "proforma-cache-v3";
+const CACHE_KEY = "proforma-cache-full-v4";
+const DELETED_CACHE_KEY = "proforma-deleted-v1";
 
 const T = {
   ar: {
@@ -83,6 +84,32 @@ const newProforma = (name: string, sortOrder = 0): Proforma => ({
   themeColor: "2BB39B", sortOrder, rowsLoaded: true,
 });
 
+const getDeletedIds = () => {
+  if (typeof window === "undefined") return new Set<string>();
+  try {
+    const parsed = JSON.parse(localStorage.getItem(DELETED_CACHE_KEY) || "[]");
+    return new Set(Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === "string") : []);
+  } catch {
+    return new Set<string>();
+  }
+};
+
+const saveDeletedIds = (ids: Set<string>) => {
+  try { localStorage.setItem(DELETED_CACHE_KEY, JSON.stringify([...ids])); } catch {}
+};
+
+const rememberDeletedId = (id: string) => {
+  const ids = getDeletedIds();
+  ids.add(id);
+  saveDeletedIds(ids);
+};
+
+const forgetDeletedId = (id: string) => {
+  const ids = getDeletedIds();
+  ids.delete(id);
+  saveDeletedIds(ids);
+};
+
 const num = (s: string) => parseFloat(s || "0") || 0;
 // T.Amount = Ctn × Set/Ctn × Price/Set
 const amount = (r: Row) => +(num(r.ctn) * num(r.setCtn) * num(r.pricePerCtn)).toFixed(2);
@@ -131,8 +158,9 @@ export default function ProformaApp() {
   const loadAll = useCallback(async () => {
     const { data, error } = await supabase.from("proformas").select("id, name, sort_order, is_primary, data").order("sort_order").order("created_at");
     if (error) { console.error(error); setLoadFailed(true); return false; }
+    const deletedIds = getDeletedIds();
     const heads = data ?? [];
-    const list: Proforma[] = heads.map((r) => {
+    const list: Proforma[] = heads.filter((r) => !deletedIds.has(r.id)).map((r) => {
       const d = (r.data ?? {}) as Partial<Proforma>;
       return {
         id: r.id, name: r.name, sortOrder: r.sort_order,
@@ -154,9 +182,10 @@ export default function ProformaApp() {
       try {
         const cached = localStorage.getItem(CACHE_KEY);
         if (cached) {
-          const list = JSON.parse(cached) as Proforma[];
+          const deletedIds = getDeletedIds();
+          const list = (JSON.parse(cached) as Proforma[]).filter((p) => p.rowsLoaded === true && !deletedIds.has(p.id));
           if (Array.isArray(list) && list.length > 0) {
-            setProformas(list);
+            setProformas(list.map((p) => ({ ...p, rowsLoaded: true })));
             setLoaded(true);
           }
         }
@@ -253,10 +282,22 @@ export default function ProformaApp() {
   const deleteProforma = async (id: string) => {
     if (proformas.length === 1) { toast.error(lang === "ar" ? "ميصحش تحذف الوحيدة" : "Can't delete the only one"); return; }
     if (!confirm(lang === "ar" ? "تأكيد الحذف؟" : "Delete this proforma?")) return;
-    await supabase.from("proformas").delete().eq("id", id);
+    const before = proformas;
     const next = proformas.filter((p) => p.id !== id);
+    rememberDeletedId(id);
+    dirtyIds.current.delete(id);
     try { localStorage.setItem(CACHE_KEY, JSON.stringify(next)); } catch {}
     setProformas(next); if (activeId === id) setActiveId(next[0]?.id ?? "");
+    const { error } = await supabase.from("proformas").delete().eq("id", id);
+    if (error) {
+      console.error(error);
+      forgetDeletedId(id);
+      setProformas(before);
+      try { localStorage.setItem(CACHE_KEY, JSON.stringify(before)); } catch {}
+      toast.error(lang === "ar" ? "فشل الحذف" : "Delete failed");
+      return;
+    }
+    toast.success(lang === "ar" ? "تم الحذف" : "Deleted");
   };
   const renameProforma = (id: string) => {
     const cur = proformas.find((p) => p.id === id); if (!cur) return;
