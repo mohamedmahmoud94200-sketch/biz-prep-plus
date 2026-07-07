@@ -583,7 +583,7 @@ export default function ProformaApp() {
       return p.rowsLoaded ? { ...p, rows: [...p.rows, nextRow] } : p;
     });
     setProformas(updated);
-    try { localStorage.setItem(CACHE_KEY, JSON.stringify(updated)); } catch {}
+    saveCache(updated);
     toast.success(lang === "ar" ? `تم الإرسال إلى ${targetIds.length} بروفورما` : `Sent to ${targetIds.length} proforma(s)`);
     void Promise.all(targetIds.map((targetId) => supabase.rpc("append_proforma_row", {
       target_id: targetId,
