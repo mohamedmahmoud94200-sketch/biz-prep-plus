@@ -30,6 +30,7 @@ type Lang = "ar" | "en";
 const LANG_KEY = "proforma-lang";
 const CACHE_KEY = "proforma-cache-lite-v6";
 const DELETED_CACHE_KEY = "proforma-deleted-v1";
+const OLD_CACHE_KEYS = ["proforma-cache-full-v4", "proforma-cache-full-v3"];
 
 const T = {
   ar: {
@@ -155,6 +156,21 @@ const rowToItem = (row: Row, proformaId: string, rowOrder: number) => ({
   description: row.description,
   image: row.image,
   packing: row.packing,
+  ctn: row.ctn,
+  doz_ctn: row.dozCtn,
+  set_ctn: row.setCtn,
+  pcs_set: row.pcsSet,
+  price_per_ctn: row.pricePerCtn,
+  cbm: row.cbm,
+  weight: row.weight,
+});
+
+const rowToItemLite = (row: Row, proformaId: string, rowOrder: number) => ({
+  id: row.id,
+  proforma_id: proformaId,
+  row_order: rowOrder,
+  item_name: row.itemName,
+  description: row.description,
   ctn: row.ctn,
   doz_ctn: row.dozCtn,
   set_ctn: row.setCtn,
