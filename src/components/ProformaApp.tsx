@@ -260,6 +260,7 @@ export default function ProformaApp() {
   const logoRef = useRef<HTMLInputElement>(null);
   const dirtyIds = useRef<Set<string>>(new Set());
   const dirtyRowIds = useRef<Map<string, Set<string>>>(new Map());
+  const dirtyImageRowIds = useRef<Map<string, Set<string>>>(new Map());
   const deletedRowIds = useRef<Map<string, Set<string>>>(new Map());
   const savingRef = useRef(false);
   const t = T[lang];
@@ -393,12 +394,14 @@ export default function ProformaApp() {
     if (savingRef.current) return;
     const ids = [...dirtyIds.current];
     const rowEntries = [...dirtyRowIds.current.entries()].map(([proformaId, rowIds]) => [proformaId, [...rowIds]] as const);
+    const imageEntries = [...dirtyImageRowIds.current.entries()].map(([proformaId, rowIds]) => [proformaId, [...rowIds]] as const);
     const deleteEntries = [...deletedRowIds.current.entries()].map(([proformaId, rowIds]) => [proformaId, [...rowIds]] as const);
     if (ids.length === 0 && rowEntries.length === 0 && deleteEntries.length === 0) return;
 
     savingRef.current = true;
     dirtyIds.current.clear();
     dirtyRowIds.current.clear();
+    dirtyImageRowIds.current.clear();
     deletedRowIds.current.clear();
     setSaveState("saving");
     try {
@@ -408,7 +411,8 @@ export default function ProformaApp() {
         const p = currentById.get(proformaId);
         if (!p) return [];
         const wanted = new Set(rowIds);
-        return p.rows.flatMap((r, idx) => wanted.has(r.id) ? [rowToItem(r, p.id, idx)] : []);
+        const imageWanted = new Set(imageEntries.find(([id]) => id === proformaId)?.[1] ?? []);
+        return p.rows.flatMap((r, idx) => wanted.has(r.id) ? [rowToItemUpdate(r, p.id, idx, imageWanted.has(r.id))] : []);
       });
 
       const requests: PromiseLike<{ error: unknown }>[] = [];
@@ -432,6 +436,7 @@ export default function ProformaApp() {
       console.error(error);
       ids.forEach((id) => dirtyIds.current.add(id));
       rowEntries.forEach(([proformaId, rowIds]) => dirtyRowIds.current.set(proformaId, new Set(rowIds)));
+      imageEntries.forEach(([proformaId, rowIds]) => dirtyImageRowIds.current.set(proformaId, new Set(rowIds)));
       deleteEntries.forEach(([proformaId, rowIds]) => deletedRowIds.current.set(proformaId, new Set(rowIds)));
       toast.error("فشل الحفظ / Save failed");
       setSaveState("idle");
@@ -445,6 +450,29 @@ export default function ProformaApp() {
     setSaveState((s) => (s === "saving" ? s : "idle"));
   }, []);
 
+  const markRowsDirty = useCallback((proformaId: string, rowIds: string[], includeImages = false) => {
+    const rows = dirtyRowIds.current.get(proformaId) ?? new Set<string>();
+    rowIds.forEach((rowId) => rows.add(rowId));
+    dirtyRowIds.current.set(proformaId, rows);
+    if (includeImages) {
+      const imageRows = dirtyImageRowIds.current.get(proformaId) ?? new Set<string>();
+      rowIds.forEach((rowId) => imageRows.add(rowId));
+      dirtyImageRowIds.current.set(proformaId, imageRows);
+    }
+    setSaveState((s) => (s === "saving" ? s : "idle"));
+  }, []);
+
+  const markRowsDeleted = useCallback((proformaId: string, rowIds: string[]) => {
+    const deleted = deletedRowIds.current.get(proformaId) ?? new Set<string>();
+    const dirty = dirtyRowIds.current.get(proformaId) ?? new Set<string>();
+    const dirtyImages = dirtyImageRowIds.current.get(proformaId) ?? new Set<string>();
+    rowIds.forEach((rowId) => { deleted.add(rowId); dirty.delete(rowId); dirtyImages.delete(rowId); });
+    deletedRowIds.current.set(proformaId, deleted);
+    dirtyRowIds.current.set(proformaId, dirty);
+    dirtyImageRowIds.current.set(proformaId, dirtyImages);
+    setSaveState((s) => (s === "saving" ? s : "idle"));
+  }, []);
+
   const updateActive = (patch: Partial<Proforma>) => {
     const targetId = activeId || active?.id;
     if (!targetId) return;
@@ -455,8 +483,17 @@ export default function ProformaApp() {
   const setRows = (u: Row[] | ((rs: Row[]) => Row[])) => {
     const targetId = activeId || active?.id;
     if (!targetId) return;
-    setProformas((ps) => ps.map((p) => (p.id === targetId ? { ...p, rows: typeof u === "function" ? (u as (r: Row[]) => Row[])(p.rows) : u } : p)));
-    markDirty(targetId);
+    setProformas((ps) => ps.map((p) => {
+      if (p.id !== targetId) return p;
+      const beforeIds = new Set(p.rows.map((r) => r.id));
+      const nextRows = typeof u === "function" ? (u as (r: Row[]) => Row[])(p.rows) : u;
+      const afterIds = new Set(nextRows.map((r) => r.id));
+      const changed = nextRows.map((r) => r.id);
+      const removed = p.rows.filter((r) => !afterIds.has(r.id)).map((r) => r.id);
+      markRowsDirty(targetId, changed, nextRows.some((r) => !beforeIds.has(r.id) && (!!r.image || !!r.packing)));
+      if (removed.length > 0) markRowsDeleted(targetId, removed);
+      return { ...p, rows: nextRows };
+    }));
   };
   const setThemeColor = (c: string) => updateActive({ themeColor: c.replace("#","") });
 
