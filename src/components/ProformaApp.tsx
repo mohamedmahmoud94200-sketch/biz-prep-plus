@@ -165,12 +165,13 @@ const rowToItem = (row: Row, proformaId: string, rowOrder: number) => ({
   weight: row.weight,
 });
 
-const rowToItemLite = (row: Row, proformaId: string, rowOrder: number) => ({
+const rowToItemUpdate = (row: Row, proformaId: string, rowOrder: number, includeImages: boolean) => ({
   id: row.id,
   proforma_id: proformaId,
   row_order: rowOrder,
   item_name: row.itemName,
   description: row.description,
+  ...(includeImages ? { image: row.image, packing: row.packing } : {}),
   ctn: row.ctn,
   doz_ctn: row.dozCtn,
   set_ctn: row.setCtn,
