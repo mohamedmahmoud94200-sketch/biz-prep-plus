@@ -28,8 +28,9 @@ type Proforma = {
 type Lang = "ar" | "en";
 
 const LANG_KEY = "proforma-lang";
-const CACHE_KEY = "proforma-cache-full-v4";
+const CACHE_KEY = "proforma-cache-lite-v6";
 const DELETED_CACHE_KEY = "proforma-deleted-v1";
+const OLD_CACHE_KEYS = ["proforma-cache-full-v4", "proforma-cache-full-v3"];
 
 const T = {
   ar: {
@@ -84,6 +85,112 @@ const newProforma = (name: string, sortOrder = 0): Proforma => ({
   themeColor: "2BB39B", sortOrder, rowsLoaded: true,
 });
 
+type ProformaHeadRow = {
+  id: string;
+  name: string;
+  sort_order: number;
+  is_primary: boolean | null;
+  meta: unknown;
+  theme_color: string | null;
+};
+
+type ProformaItemLiteRow = {
+  id: string;
+  proforma_id: string;
+  row_order: number;
+  item_name: string;
+  description: string;
+  ctn: string;
+  doz_ctn: string;
+  set_ctn: string;
+  pcs_set: string;
+  price_per_ctn: string;
+  cbm: string;
+  weight: string;
+};
+
+type ProformaItemImageRow = {
+  id: string;
+  proforma_id: string;
+  image: string;
+  packing: string;
+};
+
+const normalizeMeta = (value: unknown): Meta => {
+  const base = defaultMeta();
+  if (!value || typeof value !== "object" || Array.isArray(value)) return base;
+  const src = value as Partial<Record<keyof Meta, unknown>>;
+  return {
+    company: typeof src.company === "string" ? src.company : base.company,
+    address: typeof src.address === "string" ? src.address : base.address,
+    phone: typeof src.phone === "string" ? src.phone : base.phone,
+    email: typeof src.email === "string" ? src.email : base.email,
+    customer: typeof src.customer === "string" ? src.customer : base.customer,
+    date: typeof src.date === "string" ? src.date : base.date,
+    title: typeof src.title === "string" ? src.title : base.title,
+    notes: typeof src.notes === "string" ? src.notes : base.notes,
+    logo: typeof src.logo === "string" ? src.logo : base.logo,
+  };
+};
+
+const itemToRow = (item: ProformaItemLiteRow, images?: Partial<ProformaItemImageRow>): Row => ({
+  id: item.id,
+  itemName: item.item_name ?? "",
+  description: item.description ?? "",
+  image: images?.image ?? "",
+  packing: images?.packing ?? "",
+  ctn: item.ctn ?? "",
+  dozCtn: item.doz_ctn ?? "",
+  setCtn: item.set_ctn ?? "",
+  pcsSet: item.pcs_set ?? "",
+  pricePerCtn: item.price_per_ctn ?? "",
+  cbm: item.cbm ?? "",
+  weight: item.weight ?? "",
+});
+
+const rowToItem = (row: Row, proformaId: string, rowOrder: number) => ({
+  id: row.id,
+  proforma_id: proformaId,
+  row_order: rowOrder,
+  item_name: row.itemName,
+  description: row.description,
+  image: row.image,
+  packing: row.packing,
+  ctn: row.ctn,
+  doz_ctn: row.dozCtn,
+  set_ctn: row.setCtn,
+  pcs_set: row.pcsSet,
+  price_per_ctn: row.pricePerCtn,
+  cbm: row.cbm,
+  weight: row.weight,
+});
+
+const rowToItemUpdate = (row: Row, proformaId: string, rowOrder: number, includeImages: boolean) => ({
+  id: row.id,
+  proforma_id: proformaId,
+  row_order: rowOrder,
+  item_name: row.itemName,
+  description: row.description,
+  ...(includeImages ? { image: row.image, packing: row.packing } : {}),
+  ctn: row.ctn,
+  doz_ctn: row.dozCtn,
+  set_ctn: row.setCtn,
+  pcs_set: row.pcsSet,
+  price_per_ctn: row.pricePerCtn,
+  cbm: row.cbm,
+  weight: row.weight,
+});
+
+const cacheSafe = (list: Proforma[]) => list.map((p) => ({
+  ...p,
+  rowsLoaded: true,
+  rows: p.rows.map((r) => ({ ...r, image: "", packing: "" })),
+}));
+
+const saveCache = (list: Proforma[]) => {
+  try { localStorage.setItem(CACHE_KEY, JSON.stringify(cacheSafe(list))); } catch {}
+};
+
 const getDeletedIds = () => {
   if (typeof window === "undefined") return new Set<string>();
   try {
@@ -124,12 +231,12 @@ async function processImage(file: File): Promise<string> {
   return new Promise((resolve) => {
     const img = new Image();
     img.onload = () => {
-      const MAX = 2000; let w = img.width, h = img.height;
+      const MAX = 900; let w = img.width, h = img.height;
       if (w > MAX || h > MAX) { const r = Math.min(MAX/w, MAX/h); w = Math.round(w*r); h = Math.round(h*r); }
       const c = document.createElement("canvas"); c.width = w; c.height = h;
       const ctx = c.getContext("2d")!; ctx.imageSmoothingQuality = "high";
       ctx.fillStyle = "#FFF"; ctx.fillRect(0,0,w,h); ctx.drawImage(img,0,0,w,h);
-      resolve(c.toDataURL("image/jpeg", 0.92));
+      resolve(c.toDataURL("image/jpeg", 0.78));
     };
     img.onerror = () => resolve(raw); img.src = raw;
   });
@@ -152,21 +259,23 @@ export default function ProformaApp() {
   const [sendItem, setSendItem] = useState<Row | null>(null);
   const logoRef = useRef<HTMLInputElement>(null);
   const dirtyIds = useRef<Set<string>>(new Set());
+  const dirtyRowIds = useRef<Map<string, Set<string>>>(new Map());
+  const dirtyImageRowIds = useRef<Map<string, Set<string>>>(new Map());
+  const deletedRowIds = useRef<Map<string, Set<string>>>(new Map());
+  const savingRef = useRef(false);
   const t = T[lang];
 
   /* ----- load ----- */
   const loadAll = useCallback(async () => {
-    // Step 1: fetch metadata only (fast, no huge base64 images).
     const { data: heads, error } = await supabase
       .from("proformas")
-      .select("id, name, sort_order, is_primary")
+      .select("id, name, sort_order, is_primary, meta, theme_color")
       .order("sort_order")
       .order("created_at");
     if (error) { console.error(error); setLoadFailed(true); return false; }
     const deletedIds = getDeletedIds();
-    const safeHeads = (heads ?? []).filter((r) => !deletedIds.has(r.id));
+    const safeHeads = ((heads ?? []) as ProformaHeadRow[]).filter((r) => !deletedIds.has(r.id));
 
-    // Merge with cached rows/meta so items appear immediately.
     let cached: Proforma[] = [];
     try { cached = JSON.parse(localStorage.getItem(CACHE_KEY) || "[]") as Proforma[]; } catch {}
     const cacheMap = new Map(cached.map((p) => [p.id, p]));
@@ -178,69 +287,87 @@ export default function ProformaApp() {
         name: r.name,
         sortOrder: r.sort_order,
         isPrimary: r.is_primary ?? false,
-        meta: c?.meta ?? defaultMeta(),
+        meta: normalizeMeta(r.meta ?? c?.meta),
         rows: c?.rows ?? [newRow()],
-        themeColor: c?.themeColor ?? "2BB39B",
-        rowsLoaded: !!c?.rowsLoaded,
+        themeColor: r.theme_color ?? c?.themeColor ?? "2BB39B",
+        rowsLoaded: true,
       };
     });
-    setProformas(list);
-    try { localStorage.setItem(CACHE_KEY, JSON.stringify(list)); } catch {}
-    setLoadFailed(false);
 
-    // Step 2: hydrate data field per proforma in background (serial to avoid timeouts).
-    (async () => {
-      for (const h of safeHeads) {
-        const { data: row, error: rowErr } = await supabase
-          .from("proformas").select("data").eq("id", h.id).maybeSingle();
-        if (rowErr || !row) { if (rowErr) console.error(rowErr); continue; }
-        const d = (row.data ?? {}) as Partial<Proforma>;
-        setProformas((ps) => {
-          const next = ps.map((p) => p.id === h.id ? {
-            ...p,
-            meta: { ...defaultMeta(), ...(d.meta ?? {}) },
-            rows: (d.rows ?? [newRow()]).map((x) => ({ ...newRow(), ...x })),
-            themeColor: d.themeColor ?? p.themeColor,
-            rowsLoaded: true,
-          } : p);
-          try { localStorage.setItem(CACHE_KEY, JSON.stringify(next)); } catch {}
-          return next;
+    const ids = safeHeads.map((h) => h.id);
+    if (ids.length > 0) {
+      const { data: items, error: itemErr } = await supabase
+        .from("proforma_items")
+        .select("id, proforma_id, row_order, item_name, description, ctn, doz_ctn, set_ctn, pcs_set, price_per_ctn, cbm, weight")
+        .in("proforma_id", ids)
+        .order("row_order");
+      if (itemErr) { console.error(itemErr); setLoadFailed(true); return false; }
+
+      const rowsByProforma = new Map<string, Row[]>();
+      ((items ?? []) as ProformaItemLiteRow[]).forEach((item) => {
+        const proformaRows = rowsByProforma.get(item.proforma_id) ?? [];
+        const cachedRow = cacheMap.get(item.proforma_id)?.rows.find((r) => r.id === item.id);
+        proformaRows.push(itemToRow(item, cachedRow));
+        rowsByProforma.set(item.proforma_id, proformaRows);
+      });
+
+      list.forEach((p) => { p.rows = rowsByProforma.get(p.id) ?? [newRow()]; });
+
+      void supabase
+        .from("proforma_items")
+        .select("id, proforma_id, image, packing")
+        .in("proforma_id", ids)
+        .then(({ data: imageRows, error: imageErr }) => {
+          if (imageErr) { console.error(imageErr); return; }
+          setProformas((ps) => {
+            const imagesById = new Map((imageRows ?? []).map((r) => [r.id, r as ProformaItemImageRow]));
+            const next = ps.map((p) => ({
+              ...p,
+              rows: p.rows.map((r) => {
+                const images = imagesById.get(r.id);
+                return images ? { ...r, image: images.image ?? "", packing: images.packing ?? "" } : r;
+              }),
+            }));
+            saveCache(next);
+            return next;
+          });
         });
-      }
-    })();
+    }
+
+    setProformas(list);
+    saveCache(list);
+    setLoadFailed(false);
+    OLD_CACHE_KEYS.forEach((key) => { try { localStorage.removeItem(key); } catch {} });
     return true;
+  }, []);
+
+  const readCachedList = useCallback(() => {
+    try {
+      const cached = localStorage.getItem(CACHE_KEY);
+      if (!cached) return [] as Proforma[];
+      const deletedIds = getDeletedIds();
+      const list = (JSON.parse(cached) as Proforma[]).filter((p) => p.rowsLoaded === true && !deletedIds.has(p.id));
+      return Array.isArray(list) ? list : [];
+    } catch {
+      return [] as Proforma[];
+    }
   }, []);
 
   useEffect(() => {
     (async () => {
-      try {
-        const cached = localStorage.getItem(CACHE_KEY);
-        if (cached) {
-          const deletedIds = getDeletedIds();
-          const list = (JSON.parse(cached) as Proforma[]).filter((p) => p.rowsLoaded === true && !deletedIds.has(p.id));
-          if (Array.isArray(list) && list.length > 0) {
-            setProformas(list.map((p) => ({ ...p, rowsLoaded: true })));
-            setLoaded(true);
-          }
-        }
-      } catch {}
+      const cachedList = readCachedList();
+      if (cachedList.length > 0) {
+        setProformas(cachedList.map((p) => ({ ...p, rowsLoaded: true })));
+        setLoaded(true);
+      }
       const ok = await loadAll();
       if (ok) setLoaded(true);
     })();
-  }, [loadAll]);
-
-  const loadRowsForProforma = useCallback(async (id: string) => {
-    const existing = proformas.find((p) => p.id === id);
-    if (!existing || existing.rowsLoaded) return;
-    const { data, error } = await supabase.from("proformas").select("data").eq("id", id).single();
-    if (error) { console.error(error); toast.error("فشل تحميل البروفورما"); return; }
-    const d = (data?.data ?? {}) as Partial<Proforma>;
-    setProformas((ps) => ps.map((p) => p.id === id ? { ...p, rows: (d.rows ?? [newRow()]).map((x) => ({ ...newRow(), ...x })), rowsLoaded: true } : p));
-  }, [proformas]);
+  }, [loadAll, readCachedList]);
 
   useEffect(() => {
     if (!loaded || proformas.length === 0) return;
-    try { localStorage.setItem(CACHE_KEY, JSON.stringify(proformas)); } catch {}
+    saveCache(proformas);
   }, [loaded, proformas]);
 
   // ensure at least one + pick active
@@ -248,7 +375,7 @@ export default function ProformaApp() {
     if (!loaded || loadFailed) return;
     if (proformas.length === 0) {
       const p = newProforma("New Proforma", 0);
-      supabase.from("proformas").insert({ id: p.id, name: p.name, sort_order: 0, is_primary: false, data: { meta: p.meta, rows: p.rows, themeColor: p.themeColor } }).then(loadAll);
+      supabase.from("proformas").insert({ id: p.id, name: p.name, sort_order: 0, is_primary: false, meta: p.meta, theme_color: p.themeColor, data: {} }).then(loadAll);
       return;
     }
     if (!activeId || !proformas.find((p) => p.id === activeId)) setActiveId((proformas.find((p) => p.isPrimary) ?? proformas[0]).id);
@@ -262,28 +389,87 @@ export default function ProformaApp() {
   const themeColor = active?.themeColor ?? "2BB39B";
   const accent = `#${themeColor}`;
 
-  useEffect(() => {
-    if (loaded && active && !active.rowsLoaded) void loadRowsForProforma(active.id);
-  }, [loaded, active, loadRowsForProforma]);
-
   /* ----- save logic ----- */
   const flushSave = useCallback(async () => {
-    if (dirtyIds.current.size === 0) return;
-    const ids = [...dirtyIds.current]; dirtyIds.current.clear();
+    if (savingRef.current) return;
+    const ids = [...dirtyIds.current];
+    const rowEntries = [...dirtyRowIds.current.entries()].map(([proformaId, rowIds]) => [proformaId, [...rowIds]] as const);
+    const imageEntries = [...dirtyImageRowIds.current.entries()].map(([proformaId, rowIds]) => [proformaId, [...rowIds]] as const);
+    const deleteEntries = [...deletedRowIds.current.entries()].map(([proformaId, rowIds]) => [proformaId, [...rowIds]] as const);
+    if (ids.length === 0 && rowEntries.length === 0 && imageEntries.length === 0 && deleteEntries.length === 0) return;
+
+    savingRef.current = true;
+    dirtyIds.current.clear();
+    dirtyRowIds.current.clear();
+    dirtyImageRowIds.current.clear();
+    deletedRowIds.current.clear();
     setSaveState("saving");
-    const targets = proformas.filter((p) => ids.includes(p.id));
-    const results = await Promise.all(targets.map((p) => supabase.from("proformas").upsert({
-        id: p.id, name: p.name, sort_order: p.sortOrder, is_primary: !!p.isPrimary,
-        data: { meta: p.meta, rows: p.rows, themeColor: p.themeColor, isPrimary: !!p.isPrimary },
-      })));
-    const failed = results.find((r) => r.error);
-    if (failed?.error) { console.error(failed.error); ids.forEach((id) => dirtyIds.current.add(id)); toast.error("فشل الحفظ / Save failed"); setSaveState("idle"); return; }
-    setSaveState("saved");
-    setTimeout(() => setSaveState((s) => (s === "saved" ? "idle" : s)), 1500);
+    try {
+      const currentById = new Map(proformas.map((p) => [p.id, p]));
+      const metaTargets = proformas.filter((p) => ids.includes(p.id));
+      const rowPayload = rowEntries.flatMap(([proformaId, rowIds]) => {
+        const p = currentById.get(proformaId);
+        if (!p) return [];
+        const wanted = new Set(rowIds);
+        const imageWanted = new Set(imageEntries.find(([id]) => id === proformaId)?.[1] ?? []);
+        return p.rows.flatMap((r, idx) => wanted.has(r.id) ? [rowToItemUpdate(r, p.id, idx, imageWanted.has(r.id))] : []);
+      });
+
+      const requests: PromiseLike<{ error: unknown }>[] = [];
+      if (metaTargets.length > 0) {
+        requests.push(supabase.from("proformas").upsert(metaTargets.map((p) => ({
+          id: p.id, name: p.name, sort_order: p.sortOrder, is_primary: !!p.isPrimary,
+          meta: p.meta, theme_color: p.themeColor, data: {},
+        }))));
+      }
+      if (rowPayload.length > 0) requests.push(supabase.from("proforma_items").upsert(rowPayload));
+      deleteEntries.forEach(([, rowIds]) => {
+        if (rowIds.length > 0) requests.push(supabase.from("proforma_items").delete().in("id", rowIds));
+      });
+
+      const results = await Promise.all(requests);
+      const failed = results.find((r) => r.error);
+      if (failed?.error) throw failed.error;
+      setSaveState("saved");
+      setTimeout(() => setSaveState((s) => (s === "saved" ? "idle" : s)), 1500);
+    } catch (error) {
+      console.error(error);
+      ids.forEach((id) => dirtyIds.current.add(id));
+      rowEntries.forEach(([proformaId, rowIds]) => dirtyRowIds.current.set(proformaId, new Set(rowIds)));
+      imageEntries.forEach(([proformaId, rowIds]) => dirtyImageRowIds.current.set(proformaId, new Set(rowIds)));
+      deleteEntries.forEach(([proformaId, rowIds]) => deletedRowIds.current.set(proformaId, new Set(rowIds)));
+      toast.error("فشل الحفظ / Save failed");
+      setSaveState("idle");
+    } finally {
+      savingRef.current = false;
+    }
   }, [proformas]);
 
   const markDirty = useCallback((id: string) => {
     dirtyIds.current.add(id);
+    setSaveState((s) => (s === "saving" ? s : "idle"));
+  }, []);
+
+  const markRowsDirty = useCallback((proformaId: string, rowIds: string[], includeImages = false) => {
+    const rows = dirtyRowIds.current.get(proformaId) ?? new Set<string>();
+    rowIds.forEach((rowId) => rows.add(rowId));
+    dirtyRowIds.current.set(proformaId, rows);
+    if (includeImages) {
+      const imageRows = dirtyImageRowIds.current.get(proformaId) ?? new Set<string>();
+      rowIds.forEach((rowId) => imageRows.add(rowId));
+      dirtyImageRowIds.current.set(proformaId, imageRows);
+    }
+    setSaveState((s) => (s === "saving" ? s : "idle"));
+  }, []);
+
+  const markRowsDeleted = useCallback((proformaId: string, rowIds: string[]) => {
+    const deleted = deletedRowIds.current.get(proformaId) ?? new Set<string>();
+    const dirty = dirtyRowIds.current.get(proformaId) ?? new Set<string>();
+    const dirtyImages = dirtyImageRowIds.current.get(proformaId) ?? new Set<string>();
+    rowIds.forEach((rowId) => { deleted.add(rowId); dirty.delete(rowId); dirtyImages.delete(rowId); });
+    deletedRowIds.current.set(proformaId, deleted);
+    dirtyRowIds.current.set(proformaId, dirty);
+    dirtyImageRowIds.current.set(proformaId, dirtyImages);
     setSaveState((s) => (s === "saving" ? s : "idle"));
   }, []);
 
@@ -297,8 +483,17 @@ export default function ProformaApp() {
   const setRows = (u: Row[] | ((rs: Row[]) => Row[])) => {
     const targetId = activeId || active?.id;
     if (!targetId) return;
-    setProformas((ps) => ps.map((p) => (p.id === targetId ? { ...p, rows: typeof u === "function" ? (u as (r: Row[]) => Row[])(p.rows) : u } : p)));
-    markDirty(targetId);
+    setProformas((ps) => ps.map((p) => {
+      if (p.id !== targetId) return p;
+      const beforeIds = new Set(p.rows.map((r) => r.id));
+      const nextRows = typeof u === "function" ? (u as (r: Row[]) => Row[])(p.rows) : u;
+      const afterIds = new Set(nextRows.map((r) => r.id));
+      const changed = nextRows.map((r) => r.id);
+      const removed = p.rows.filter((r) => !afterIds.has(r.id)).map((r) => r.id);
+      markRowsDirty(targetId, changed, nextRows.some((r) => !beforeIds.has(r.id) && (!!r.image || !!r.packing)));
+      if (removed.length > 0) markRowsDeleted(targetId, removed);
+      return { ...p, rows: nextRows };
+    }));
   };
   const setThemeColor = (c: string) => updateActive({ themeColor: c.replace("#","") });
 
@@ -306,11 +501,13 @@ export default function ProformaApp() {
   const createProforma = async () => {
     const p = newProforma("New Proforma", proformas.length);
     if (active) { p.meta = { ...active.meta, customer: "", date: new Date().toISOString().slice(0,10) }; p.themeColor = active.themeColor; }
-    const { error } = await supabase.from("proformas").insert({ id: p.id, name: p.name, sort_order: p.sortOrder, is_primary: false, data: { meta: p.meta, rows: p.rows, themeColor: p.themeColor, isPrimary: false } });
+    const { error } = await supabase.from("proformas").insert({ id: p.id, name: p.name, sort_order: p.sortOrder, is_primary: false, meta: p.meta, theme_color: p.themeColor, data: {} });
     if (error) { toast.error("فشل الإنشاء"); return; }
+    const { error: itemError } = await supabase.from("proforma_items").insert(p.rows.map((row, idx) => rowToItem(row, p.id, idx)));
+    if (itemError) { console.error(itemError); toast.error("فشل إنشاء المنتجات"); return; }
     const next = [...proformas, p];
     setProformas(next); setActiveId(p.id);
-    try { localStorage.setItem(CACHE_KEY, JSON.stringify(next)); } catch {}
+    saveCache(next);
     toast.success(lang === "ar" ? "تم الإنشاء" : "Created");
   };
   const deleteProforma = async (id: string) => {
@@ -320,14 +517,14 @@ export default function ProformaApp() {
     const next = proformas.filter((p) => p.id !== id);
     rememberDeletedId(id);
     dirtyIds.current.delete(id);
-    try { localStorage.setItem(CACHE_KEY, JSON.stringify(next)); } catch {}
+    saveCache(next);
     setProformas(next); if (activeId === id) setActiveId(next[0]?.id ?? "");
     const { error } = await supabase.from("proformas").delete().eq("id", id);
     if (error) {
       console.error(error);
       forgetDeletedId(id);
       setProformas(before);
-      try { localStorage.setItem(CACHE_KEY, JSON.stringify(before)); } catch {}
+      saveCache(before);
       toast.error(lang === "ar" ? "فشل الحذف" : "Delete failed");
       return;
     }
@@ -344,7 +541,7 @@ export default function ProformaApp() {
   const togglePrimary = async (id: string) => {
     const next = proformas.map((p) => (p.id === id ? { ...p, isPrimary: !p.isPrimary } : p));
     setProformas(next);
-    try { localStorage.setItem(CACHE_KEY, JSON.stringify(next)); } catch {}
+    saveCache(next);
     const target = next.find((p) => p.id === id);
     if (!target) return;
     toast.success(lang === "ar" ? "اتحدثت المكتبة فوراً" : "Library updated instantly");
@@ -361,7 +558,12 @@ export default function ProformaApp() {
     return { tCtn, tAmount, tCBM, tWt };
   }, [rows]);
 
-  const updateRow = (id: string, patch: Partial<Row>) => setRows((rs) => rs.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+  const updateRow = (id: string, patch: Partial<Row>) => {
+    const targetId = activeId || active?.id;
+    if (!targetId) return;
+    setProformas((ps) => ps.map((p) => p.id === targetId ? { ...p, rows: p.rows.map((r) => (r.id === id ? { ...r, ...patch } : r)) } : p));
+    markRowsDirty(targetId, [id], "image" in patch || "packing" in patch);
+  };
   const removeRow = (id: string) => {
     const row = rows.find((r) => r.id === id);
     if (!confirm(lang === "ar" ? `تأكيد حذف المنتج ${row?.itemName || ""}؟` : `Delete ${row?.itemName || "this item"}?`)) return;
@@ -381,7 +583,7 @@ export default function ProformaApp() {
       return p.rowsLoaded ? { ...p, rows: [...p.rows, nextRow] } : p;
     });
     setProformas(updated);
-    try { localStorage.setItem(CACHE_KEY, JSON.stringify(updated)); } catch {}
+    saveCache(updated);
     toast.success(lang === "ar" ? `تم الإرسال إلى ${targetIds.length} بروفورما` : `Sent to ${targetIds.length} proforma(s)`);
     void Promise.all(targetIds.map((targetId) => supabase.rpc("append_proforma_row", {
       target_id: targetId,
