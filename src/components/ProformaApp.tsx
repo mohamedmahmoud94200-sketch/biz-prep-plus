@@ -28,7 +28,7 @@ type Proforma = {
 type Lang = "ar" | "en";
 
 const LANG_KEY = "proforma-lang";
-const CACHE_KEY = "proforma-cache-full-v4";
+const CACHE_KEY = "proforma-cache-lite-v6";
 const DELETED_CACHE_KEY = "proforma-deleted-v1";
 
 const T = {
@@ -84,6 +84,96 @@ const newProforma = (name: string, sortOrder = 0): Proforma => ({
   themeColor: "2BB39B", sortOrder, rowsLoaded: true,
 });
 
+type ProformaHeadRow = {
+  id: string;
+  name: string;
+  sort_order: number;
+  is_primary: boolean | null;
+  meta: unknown;
+  theme_color: string | null;
+};
+
+type ProformaItemLiteRow = {
+  id: string;
+  proforma_id: string;
+  row_order: number;
+  item_name: string;
+  description: string;
+  ctn: string;
+  doz_ctn: string;
+  set_ctn: string;
+  pcs_set: string;
+  price_per_ctn: string;
+  cbm: string;
+  weight: string;
+};
+
+type ProformaItemImageRow = {
+  id: string;
+  proforma_id: string;
+  image: string;
+  packing: string;
+};
+
+const normalizeMeta = (value: unknown): Meta => {
+  const base = defaultMeta();
+  if (!value || typeof value !== "object" || Array.isArray(value)) return base;
+  const src = value as Partial<Record<keyof Meta, unknown>>;
+  return {
+    company: typeof src.company === "string" ? src.company : base.company,
+    address: typeof src.address === "string" ? src.address : base.address,
+    phone: typeof src.phone === "string" ? src.phone : base.phone,
+    email: typeof src.email === "string" ? src.email : base.email,
+    customer: typeof src.customer === "string" ? src.customer : base.customer,
+    date: typeof src.date === "string" ? src.date : base.date,
+    title: typeof src.title === "string" ? src.title : base.title,
+    notes: typeof src.notes === "string" ? src.notes : base.notes,
+    logo: typeof src.logo === "string" ? src.logo : base.logo,
+  };
+};
+
+const itemToRow = (item: ProformaItemLiteRow, images?: Partial<ProformaItemImageRow>): Row => ({
+  id: item.id,
+  itemName: item.item_name ?? "",
+  description: item.description ?? "",
+  image: images?.image ?? "",
+  packing: images?.packing ?? "",
+  ctn: item.ctn ?? "",
+  dozCtn: item.doz_ctn ?? "",
+  setCtn: item.set_ctn ?? "",
+  pcsSet: item.pcs_set ?? "",
+  pricePerCtn: item.price_per_ctn ?? "",
+  cbm: item.cbm ?? "",
+  weight: item.weight ?? "",
+});
+
+const rowToItem = (row: Row, proformaId: string, rowOrder: number) => ({
+  id: row.id,
+  proforma_id: proformaId,
+  row_order: rowOrder,
+  item_name: row.itemName,
+  description: row.description,
+  image: row.image,
+  packing: row.packing,
+  ctn: row.ctn,
+  doz_ctn: row.dozCtn,
+  set_ctn: row.setCtn,
+  pcs_set: row.pcsSet,
+  price_per_ctn: row.pricePerCtn,
+  cbm: row.cbm,
+  weight: row.weight,
+});
+
+const cacheSafe = (list: Proforma[]) => list.map((p) => ({
+  ...p,
+  rowsLoaded: true,
+  rows: p.rows.map((r) => ({ ...r, image: "", packing: "" })),
+}));
+
+const saveCache = (list: Proforma[]) => {
+  try { localStorage.setItem(CACHE_KEY, JSON.stringify(cacheSafe(list))); } catch {}
+};
+
 const getDeletedIds = () => {
   if (typeof window === "undefined") return new Set<string>();
   try {
@@ -124,12 +214,12 @@ async function processImage(file: File): Promise<string> {
   return new Promise((resolve) => {
     const img = new Image();
     img.onload = () => {
-      const MAX = 2000; let w = img.width, h = img.height;
+      const MAX = 900; let w = img.width, h = img.height;
       if (w > MAX || h > MAX) { const r = Math.min(MAX/w, MAX/h); w = Math.round(w*r); h = Math.round(h*r); }
       const c = document.createElement("canvas"); c.width = w; c.height = h;
       const ctx = c.getContext("2d")!; ctx.imageSmoothingQuality = "high";
       ctx.fillStyle = "#FFF"; ctx.fillRect(0,0,w,h); ctx.drawImage(img,0,0,w,h);
-      resolve(c.toDataURL("image/jpeg", 0.92));
+      resolve(c.toDataURL("image/jpeg", 0.78));
     };
     img.onerror = () => resolve(raw); img.src = raw;
   });
