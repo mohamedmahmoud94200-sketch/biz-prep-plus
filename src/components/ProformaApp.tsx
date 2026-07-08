@@ -770,8 +770,12 @@ export default function ProformaApp() {
       if (isLast) {
         const cY = tY + rowH + slice.length*rowH + 0.25;
         s.addText(`• ${meta.notes}`, { x: 0.3, y: cY-0.05, w: 12.73, h: 0.3, fontSize: 11, bold: true, color: "222222", align: "right" });
+        const invTotal = +(totals.tAmount + (transport || 0)).toFixed(2);
         const cards = invoiceOnly ? [
-          { l: "T.Ctn", v: String(totals.tCtn) }, { l: "T.Amount", v: String(totals.tAmount) },
+          { l: "T.Ctn", v: String(totals.tCtn) },
+          { l: "T.Amount", v: String(totals.tAmount) },
+          { l: "Transport", v: String(transport || 0) },
+          { l: "Total", v: String(invTotal) },
         ] : [
           { l: "T.Ctn", v: String(totals.tCtn) }, { l: "T.CBM", v: totals.tCBM.toFixed(2) },
           { l: "T.Weight", v: totals.tWt.toFixed(2) }, { l: "T.Amount", v: String(totals.tAmount) },
