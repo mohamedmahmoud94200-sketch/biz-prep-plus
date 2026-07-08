@@ -667,7 +667,7 @@ export default function ProformaApp() {
           renderedPx += sliceCanvas.height;
         }
       }
-      pdf.save(`${invoiceOnly ? "Invoice" : (meta.title || "proforma")}-${meta.customer || "customer"}.pdf`);
+      pdf.save(`${invoiceOnly ? "Invoice" : "Proforma"}-${meta.customer || "customer"}.pdf`);
       toast.success("PDF ✓");
     } catch (e) {
       console.error(e);
@@ -732,7 +732,7 @@ export default function ProformaApp() {
       } else {
         // Minimal slim header for continuation
         s.addShape("rect", { x: 0.3, y: 0.25, w: 12.73, h: 0.5, fill: { color: ac }, line: { color: ac } });
-        s.addText(`${meta.title} — ${meta.customer || ""}`, { x: 0.4, y: 0.27, w: 9, h: 0.45, fontSize: 14, bold: true, color: "FFFFFF", valign: "middle" });
+        s.addText(`${invoiceOnly ? "Invoice" : "Proforma"} — ${meta.customer || ""}`, { x: 0.4, y: 0.27, w: 9, h: 0.45, fontSize: 14, bold: true, color: "FFFFFF", valign: "middle" });
         s.addText(`${p + 1} / ${pages}`, { x: 10, y: 0.27, w: 3, h: 0.45, fontSize: 11, color: "FFFFFF", align: "right", valign: "middle" });
         tY = 0.95;
       }
@@ -795,7 +795,7 @@ export default function ProformaApp() {
         s.addText(`E-MAIL: ${meta.email}`, { x: 0.4, y: 7.2, w: 12.5, h: 0.18, fontSize: 8, color: "FFFFFF", align: "center" });
       }
     }
-    await pptx.writeFile({ fileName: `${invoiceOnly ? "Invoice" : (meta.title || "proforma")}-${meta.customer || "customer"}.pptx` });
+    await pptx.writeFile({ fileName: `${invoiceOnly ? "Invoice" : "Proforma"}-${meta.customer || "customer"}.pptx` });
     toast.success("PPTX ✓");
   };
 
@@ -883,7 +883,7 @@ export default function ProformaApp() {
               {meta.logo ? <img src={meta.logo} alt="logo" className="h-full w-full object-contain p-1" /> : <span className="px-1 text-center">{meta.company.split(" ").slice(0,2).join(" ")}</span>}
             </button>
             <input ref={logoRef} type="file" accept="image/*" className="hidden" onChange={(e) => onLogo(e.target.files?.[0] ?? null)} />
-            <h2 className="text-5xl font-extrabold lowercase tracking-tight text-white">{t.proforma}</h2>
+            <h2 className="text-5xl font-extrabold lowercase tracking-tight text-white">{invoiceTransport !== null ? (lang === "ar" ? "invoice" : "invoice") : t.proforma}</h2>
           </div>
           {/* Customer / Date */}
           <div className="grid grid-cols-2 gap-8 border-b px-6 pt-5 pb-3">
