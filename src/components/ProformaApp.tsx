@@ -621,13 +621,18 @@ export default function ProformaApp() {
   const fmtDate = (d: string) => { if (!d) return ""; const [y,m,da] = d.split("-"); return `${da}/${m}/${y}`; };
 
   /* ───── PDF — capture #printable so Arabic & alignment match exactly ───── */
-  const exportPDF = async (invoiceOnly = false) => {
+  const exportPDF = async (invoiceOnly = false, transport = 0) => {
     const el = document.getElementById("printable");
     if (!el) return;
     toast.message(lang === "ar" ? "بنحضّر الملف…" : "Preparing PDF…");
     // Hide action column during capture
     el.classList.add("pdf-capture");
-    if (invoiceOnly) el.classList.add("invoice-capture");
+    if (invoiceOnly) {
+      el.classList.add("invoice-capture");
+      setInvoiceTransport(transport);
+      // wait two frames so React renders the extra totals cards before capture
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(null))));
+    }
     try {
       const canvas = await html2canvas(el, {
         scale: 2, useCORS: true, backgroundColor: "#ffffff", logging: false,
@@ -670,10 +675,11 @@ export default function ProformaApp() {
     } finally {
       el.classList.remove("pdf-capture");
       el.classList.remove("invoice-capture");
+      if (invoiceOnly) setInvoiceTransport(null);
     }
   };
 
-  const exportPPTX = async (invoiceOnly = false) => {
+  const exportPPTX = async (invoiceOnly = false, transport = 0) => {
     const pptx = new PptxGenJS(); pptx.layout = "LAYOUT_WIDE"; pptx.title = meta.title;
     const ac = themeColor;
     const perSlideFirst = 5; // header takes vertical space
