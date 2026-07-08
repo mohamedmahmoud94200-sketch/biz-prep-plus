@@ -959,7 +959,10 @@ export default function ProformaApp() {
       </main>
 
       {showLibrary && <LibraryModal items={library} accent={accent} lang={lang} onPick={(r) => { copyFromLibrary(r); }} onClose={() => setShowLibrary(false)} />}
-      {showInvoice && <InvoiceModal accent={accent} lang={lang} onCancel={() => setShowInvoice(false)} onPdf={async () => { setShowInvoice(false); await exportPDF(true); }} onPptx={async () => { setShowInvoice(false); await exportPPTX(true); }} />}
+      {showInvoice && <InvoiceModal accent={accent} lang={lang}
+        onCancel={() => setShowInvoice(false)}
+        onPdf={async (transport) => { setShowInvoice(false); await exportPDF(true, transport); }}
+        onPptx={async (transport) => { setShowInvoice(false); await exportPPTX(true, transport); }} />}
       {sendItem && (
         <SendToModal
           item={sendItem} accent={accent} lang={lang}
