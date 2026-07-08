@@ -253,6 +253,7 @@ export default function ProformaApp() {
   const [showThemes, setShowThemes] = useState(false);
   const [showCompany, setShowCompany] = useState(false);
   const [showInvoice, setShowInvoice] = useState(false);
+  const [invoiceTransport, setInvoiceTransport] = useState<number | null>(null);
   const [saveState, setSaveState] = useState<"idle"|"saving"|"saved">("idle");
   const [loadFailed, setLoadFailed] = useState(false);
   const [lang, setLang] = useState<Lang>(() => (typeof window !== "undefined" && (localStorage.getItem(LANG_KEY) as Lang)) || "ar");
@@ -620,13 +621,18 @@ export default function ProformaApp() {
   const fmtDate = (d: string) => { if (!d) return ""; const [y,m,da] = d.split("-"); return `${da}/${m}/${y}`; };
 
   /* ───── PDF — capture #printable so Arabic & alignment match exactly ───── */
-  const exportPDF = async (invoiceOnly = false) => {
+  const exportPDF = async (invoiceOnly = false, transport = 0) => {
     const el = document.getElementById("printable");
     if (!el) return;
     toast.message(lang === "ar" ? "بنحضّر الملف…" : "Preparing PDF…");
     // Hide action column during capture
     el.classList.add("pdf-capture");
-    if (invoiceOnly) el.classList.add("invoice-capture");
+    if (invoiceOnly) {
+      el.classList.add("invoice-capture");
+      setInvoiceTransport(transport);
+      // wait two frames so React renders the extra totals cards before capture
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(null))));
+    }
     try {
       const canvas = await html2canvas(el, {
         scale: 2, useCORS: true, backgroundColor: "#ffffff", logging: false,
@@ -669,10 +675,11 @@ export default function ProformaApp() {
     } finally {
       el.classList.remove("pdf-capture");
       el.classList.remove("invoice-capture");
+      if (invoiceOnly) setInvoiceTransport(null);
     }
   };
 
-  const exportPPTX = async (invoiceOnly = false) => {
+  const exportPPTX = async (invoiceOnly = false, transport = 0) => {
     const pptx = new PptxGenJS(); pptx.layout = "LAYOUT_WIDE"; pptx.title = meta.title;
     const ac = themeColor;
     const perSlideFirst = 5; // header takes vertical space
@@ -763,8 +770,12 @@ export default function ProformaApp() {
       if (isLast) {
         const cY = tY + rowH + slice.length*rowH + 0.25;
         s.addText(`• ${meta.notes}`, { x: 0.3, y: cY-0.05, w: 12.73, h: 0.3, fontSize: 11, bold: true, color: "222222", align: "right" });
+        const invTotal = +(totals.tAmount + (transport || 0)).toFixed(2);
         const cards = invoiceOnly ? [
-          { l: "T.Ctn", v: String(totals.tCtn) }, { l: "T.Amount", v: String(totals.tAmount) },
+          { l: "T.Ctn", v: String(totals.tCtn) },
+          { l: "T.Amount", v: String(totals.tAmount) },
+          { l: "Transport", v: String(transport || 0) },
+          { l: "Total", v: String(invTotal) },
         ] : [
           { l: "T.Ctn", v: String(totals.tCtn) }, { l: "T.CBM", v: totals.tCBM.toFixed(2) },
           { l: "T.Weight", v: totals.tWt.toFixed(2) }, { l: "T.Amount", v: String(totals.tAmount) },
@@ -919,10 +930,14 @@ export default function ProformaApp() {
           <div className="px-6 pt-3"><div className="text-end text-[13px] font-semibold">• {meta.notes}</div></div>
           <div className="totals-row flex flex-wrap justify-end gap-3 px-6 py-4">
             {[
-              { l: t.totals.ctn, v: totals.tCtn },
+              { l: t.totals.ctn, v: String(totals.tCtn) },
               { l: t.totals.cbm, v: totals.tCBM.toFixed(2) },
               { l: t.totals.weight, v: totals.tWt.toFixed(2) },
-              { l: t.totals.amount, v: totals.tAmount },
+              { l: t.totals.amount, v: String(totals.tAmount) },
+              ...(invoiceTransport !== null ? [
+                { l: "Transport", v: String(invoiceTransport) },
+                { l: "Total", v: String(+(totals.tAmount + invoiceTransport).toFixed(2)) },
+              ] : []),
             ].map((c) => (
               <div key={c.l} className="min-w-[160px] overflow-hidden rounded-md border" style={{ borderColor: accent }}>
                 <div className="px-3 py-1.5 text-center text-xs font-bold uppercase text-white" style={{ background: accent }}>{c.l}</div>
@@ -944,7 +959,10 @@ export default function ProformaApp() {
       </main>
 
       {showLibrary && <LibraryModal items={library} accent={accent} lang={lang} onPick={(r) => { copyFromLibrary(r); }} onClose={() => setShowLibrary(false)} />}
-      {showInvoice && <InvoiceModal accent={accent} lang={lang} onCancel={() => setShowInvoice(false)} onPdf={async () => { setShowInvoice(false); await exportPDF(true); }} onPptx={async () => { setShowInvoice(false); await exportPPTX(true); }} />}
+      {showInvoice && <InvoiceModal accent={accent} lang={lang}
+        onCancel={() => setShowInvoice(false)}
+        onPdf={async (transport) => { setShowInvoice(false); await exportPDF(true, transport); }}
+        onPptx={async (transport) => { setShowInvoice(false); await exportPPTX(true, transport); }} />}
       {sendItem && (
         <SendToModal
           item={sendItem} accent={accent} lang={lang}
@@ -1180,20 +1198,36 @@ function SendToModal({ item, targets, accent, lang, onCancel, onSend }:
 }
 
 function InvoiceModal({ accent, lang, onCancel, onPdf, onPptx }:
-  { accent: string; lang: Lang; onCancel: () => void; onPdf: () => void; onPptx: () => void; }) {
+  { accent: string; lang: Lang; onCancel: () => void; onPdf: (transport: number) => void; onPptx: (transport: number) => void; }) {
+  const [transport, setTransport] = useState<string>("");
+  const value = Number(transport) || 0;
+  const isAr = lang === "ar";
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onCancel}>
-      <div className="w-full max-w-sm overflow-hidden rounded-lg bg-white shadow-2xl" onClick={(e) => e.stopPropagation()} dir={lang === "ar" ? "rtl" : "ltr"}>
+      <div className="w-full max-w-sm overflow-hidden rounded-lg bg-white shadow-2xl" onClick={(e) => e.stopPropagation()} dir={isAr ? "rtl" : "ltr"}>
         <div className="flex items-center justify-between border-b px-5 py-3" style={{ background: `${accent}15` }}>
           <div>
             <h3 className="font-semibold">Create Invoice</h3>
-            <p className="text-xs text-muted-foreground">{lang === "ar" ? "التصدير لحد عمود T.Amount فقط" : "Exports columns up to T.Amount only"}</p>
+            <p className="text-xs text-muted-foreground">{isAr ? "التصدير لحد عمود T.Amount فقط" : "Exports columns up to T.Amount only"}</p>
           </div>
           <button onClick={onCancel} className="text-muted-foreground hover:text-foreground"><X className="h-5 w-5" /></button>
         </div>
-        <div className="grid grid-cols-2 gap-3 p-5">
-          <Button onClick={onPdf} className="bg-sky-600 text-white hover:bg-sky-700"><FileDown className="me-1 h-4 w-4" /> PDF</Button>
-          <Button onClick={onPptx} className="bg-orange-500 text-white hover:bg-orange-600"><Presentation className="me-1 h-4 w-4" /> PowerPoint</Button>
+        <div className="space-y-3 p-5">
+          <div>
+            <label className="text-xs font-medium text-muted-foreground">Transport</label>
+            <Input
+              type="number"
+              inputMode="decimal"
+              value={transport}
+              onChange={(e) => setTransport(e.target.value)}
+              placeholder="0"
+              className="mt-1 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Button onClick={() => onPdf(value)} className="bg-sky-600 text-white hover:bg-sky-700"><FileDown className="me-1 h-4 w-4" /> PDF</Button>
+            <Button onClick={() => onPptx(value)} className="bg-orange-500 text-white hover:bg-orange-600"><Presentation className="me-1 h-4 w-4" /> PowerPoint</Button>
+          </div>
         </div>
       </div>
     </div>
