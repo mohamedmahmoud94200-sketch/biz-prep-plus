@@ -930,10 +930,14 @@ export default function ProformaApp() {
           <div className="px-6 pt-3"><div className="text-end text-[13px] font-semibold">• {meta.notes}</div></div>
           <div className="totals-row flex flex-wrap justify-end gap-3 px-6 py-4">
             {[
-              { l: t.totals.ctn, v: totals.tCtn },
+              { l: t.totals.ctn, v: String(totals.tCtn) },
               { l: t.totals.cbm, v: totals.tCBM.toFixed(2) },
               { l: t.totals.weight, v: totals.tWt.toFixed(2) },
-              { l: t.totals.amount, v: totals.tAmount },
+              { l: t.totals.amount, v: String(totals.tAmount) },
+              ...(invoiceTransport !== null ? [
+                { l: "Transport", v: String(invoiceTransport) },
+                { l: "Total", v: String(+(totals.tAmount + invoiceTransport).toFixed(2)) },
+              ] : []),
             ].map((c) => (
               <div key={c.l} className="min-w-[160px] overflow-hidden rounded-md border" style={{ borderColor: accent }}>
                 <div className="px-3 py-1.5 text-center text-xs font-bold uppercase text-white" style={{ background: accent }}>{c.l}</div>
