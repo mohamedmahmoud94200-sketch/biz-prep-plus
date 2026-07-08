@@ -1198,20 +1198,36 @@ function SendToModal({ item, targets, accent, lang, onCancel, onSend }:
 }
 
 function InvoiceModal({ accent, lang, onCancel, onPdf, onPptx }:
-  { accent: string; lang: Lang; onCancel: () => void; onPdf: () => void; onPptx: () => void; }) {
+  { accent: string; lang: Lang; onCancel: () => void; onPdf: (transport: number) => void; onPptx: (transport: number) => void; }) {
+  const [transport, setTransport] = useState<string>("");
+  const value = Number(transport) || 0;
+  const isAr = lang === "ar";
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onCancel}>
-      <div className="w-full max-w-sm overflow-hidden rounded-lg bg-white shadow-2xl" onClick={(e) => e.stopPropagation()} dir={lang === "ar" ? "rtl" : "ltr"}>
+      <div className="w-full max-w-sm overflow-hidden rounded-lg bg-white shadow-2xl" onClick={(e) => e.stopPropagation()} dir={isAr ? "rtl" : "ltr"}>
         <div className="flex items-center justify-between border-b px-5 py-3" style={{ background: `${accent}15` }}>
           <div>
             <h3 className="font-semibold">Create Invoice</h3>
-            <p className="text-xs text-muted-foreground">{lang === "ar" ? "التصدير لحد عمود T.Amount فقط" : "Exports columns up to T.Amount only"}</p>
+            <p className="text-xs text-muted-foreground">{isAr ? "التصدير لحد عمود T.Amount فقط" : "Exports columns up to T.Amount only"}</p>
           </div>
           <button onClick={onCancel} className="text-muted-foreground hover:text-foreground"><X className="h-5 w-5" /></button>
         </div>
-        <div className="grid grid-cols-2 gap-3 p-5">
-          <Button onClick={onPdf} className="bg-sky-600 text-white hover:bg-sky-700"><FileDown className="me-1 h-4 w-4" /> PDF</Button>
-          <Button onClick={onPptx} className="bg-orange-500 text-white hover:bg-orange-600"><Presentation className="me-1 h-4 w-4" /> PowerPoint</Button>
+        <div className="space-y-3 p-5">
+          <div>
+            <label className="text-xs font-medium text-muted-foreground">Transport</label>
+            <Input
+              type="number"
+              inputMode="decimal"
+              value={transport}
+              onChange={(e) => setTransport(e.target.value)}
+              placeholder="0"
+              className="mt-1 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Button onClick={() => onPdf(value)} className="bg-sky-600 text-white hover:bg-sky-700"><FileDown className="me-1 h-4 w-4" /> PDF</Button>
+            <Button onClick={() => onPptx(value)} className="bg-orange-500 text-white hover:bg-orange-600"><Presentation className="me-1 h-4 w-4" /> PowerPoint</Button>
+          </div>
         </div>
       </div>
     </div>
