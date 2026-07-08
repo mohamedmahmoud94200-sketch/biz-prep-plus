@@ -253,6 +253,7 @@ export default function ProformaApp() {
   const [showThemes, setShowThemes] = useState(false);
   const [showCompany, setShowCompany] = useState(false);
   const [showInvoice, setShowInvoice] = useState(false);
+  const [invoiceTransport, setInvoiceTransport] = useState<number | null>(null);
   const [saveState, setSaveState] = useState<"idle"|"saving"|"saved">("idle");
   const [loadFailed, setLoadFailed] = useState(false);
   const [lang, setLang] = useState<Lang>(() => (typeof window !== "undefined" && (localStorage.getItem(LANG_KEY) as Lang)) || "ar");
