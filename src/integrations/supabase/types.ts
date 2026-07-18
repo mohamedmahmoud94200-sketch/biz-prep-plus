@@ -14,81 +14,14 @@ export type Database = {
   }
   public: {
     Tables: {
-      proforma_items: {
-        Row: {
-          cbm: string
-          created_at: string
-          ctn: string
-          description: string
-          doz_ctn: string
-          id: string
-          image: string
-          item_name: string
-          packing: string
-          pcs_set: string
-          price_per_ctn: string
-          proforma_id: string
-          row_order: number
-          set_ctn: string
-          updated_at: string
-          weight: string
-        }
-        Insert: {
-          cbm?: string
-          created_at?: string
-          ctn?: string
-          description?: string
-          doz_ctn?: string
-          id?: string
-          image?: string
-          item_name?: string
-          packing?: string
-          pcs_set?: string
-          price_per_ctn?: string
-          proforma_id: string
-          row_order?: number
-          set_ctn?: string
-          updated_at?: string
-          weight?: string
-        }
-        Update: {
-          cbm?: string
-          created_at?: string
-          ctn?: string
-          description?: string
-          doz_ctn?: string
-          id?: string
-          image?: string
-          item_name?: string
-          packing?: string
-          pcs_set?: string
-          price_per_ctn?: string
-          proforma_id?: string
-          row_order?: number
-          set_ctn?: string
-          updated_at?: string
-          weight?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "proforma_items_proforma_id_fkey"
-            columns: ["proforma_id"]
-            isOneToOne: false
-            referencedRelation: "proformas"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       proformas: {
         Row: {
           created_at: string
           data: Json
           id: string
           is_primary: boolean
-          meta: Json
           name: string
           sort_order: number
-          theme_color: string
           updated_at: string
         }
         Insert: {
@@ -96,10 +29,8 @@ export type Database = {
           data?: Json
           id?: string
           is_primary?: boolean
-          meta?: Json
           name?: string
           sort_order?: number
-          theme_color?: string
           updated_at?: string
         }
         Update: {
@@ -107,10 +38,8 @@ export type Database = {
           data?: Json
           id?: string
           is_primary?: boolean
-          meta?: Json
           name?: string
           sort_order?: number
-          theme_color?: string
           updated_at?: string
         }
         Relationships: []
