@@ -28,8 +28,7 @@ type Proforma = {
 type Lang = "ar" | "en";
 
 const LANG_KEY = "proforma-lang";
-const CACHE_KEY = "proforma-cache-full-v4";
-const DELETED_CACHE_KEY = "proforma-deleted-v1";
+const CACHE_KEY = "proforma-cache-v3";
 
 const T = {
   ar: {
@@ -84,32 +83,6 @@ const newProforma = (name: string, sortOrder = 0): Proforma => ({
   themeColor: "2BB39B", sortOrder, rowsLoaded: true,
 });
 
-const getDeletedIds = () => {
-  if (typeof window === "undefined") return new Set<string>();
-  try {
-    const parsed = JSON.parse(localStorage.getItem(DELETED_CACHE_KEY) || "[]");
-    return new Set(Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === "string") : []);
-  } catch {
-    return new Set<string>();
-  }
-};
-
-const saveDeletedIds = (ids: Set<string>) => {
-  try { localStorage.setItem(DELETED_CACHE_KEY, JSON.stringify([...ids])); } catch {}
-};
-
-const rememberDeletedId = (id: string) => {
-  const ids = getDeletedIds();
-  ids.add(id);
-  saveDeletedIds(ids);
-};
-
-const forgetDeletedId = (id: string) => {
-  const ids = getDeletedIds();
-  ids.delete(id);
-  saveDeletedIds(ids);
-};
-
 const num = (s: string) => parseFloat(s || "0") || 0;
 // T.Amount = Ctn × Set/Ctn × Price/Set
 const amount = (r: Row) => +(num(r.ctn) * num(r.setCtn) * num(r.pricePerCtn)).toFixed(2);
@@ -156,58 +129,23 @@ export default function ProformaApp() {
 
   /* ----- load ----- */
   const loadAll = useCallback(async () => {
-    // Step 1: fetch metadata only (fast, no huge base64 images).
-    const { data: heads, error } = await supabase
-      .from("proformas")
-      .select("id, name, sort_order, is_primary")
-      .order("sort_order")
-      .order("created_at");
+    const { data, error } = await supabase.from("proformas").select("id, name, sort_order, is_primary, data").order("sort_order").order("created_at");
     if (error) { console.error(error); setLoadFailed(true); return false; }
-    const deletedIds = getDeletedIds();
-    const safeHeads = (heads ?? []).filter((r) => !deletedIds.has(r.id));
-
-    // Merge with cached rows/meta so items appear immediately.
-    let cached: Proforma[] = [];
-    try { cached = JSON.parse(localStorage.getItem(CACHE_KEY) || "[]") as Proforma[]; } catch {}
-    const cacheMap = new Map(cached.map((p) => [p.id, p]));
-
-    const list: Proforma[] = safeHeads.map((r) => {
-      const c = cacheMap.get(r.id);
+    const heads = data ?? [];
+    const list: Proforma[] = heads.map((r) => {
+      const d = (r.data ?? {}) as Partial<Proforma>;
       return {
-        id: r.id,
-        name: r.name,
-        sortOrder: r.sort_order,
-        isPrimary: r.is_primary ?? false,
-        meta: c?.meta ?? defaultMeta(),
-        rows: c?.rows ?? [newRow()],
-        themeColor: c?.themeColor ?? "2BB39B",
-        rowsLoaded: !!c?.rowsLoaded,
+        id: r.id, name: r.name, sortOrder: r.sort_order,
+        meta: { ...defaultMeta(), ...(d.meta ?? {}) },
+        rows: (d.rows ?? [newRow()]).map((x) => ({ ...newRow(), ...x })),
+        themeColor: d.themeColor ?? "2BB39B",
+        isPrimary: r.is_primary ?? d.isPrimary ?? false,
+        rowsLoaded: true,
       };
     });
     setProformas(list);
     try { localStorage.setItem(CACHE_KEY, JSON.stringify(list)); } catch {}
     setLoadFailed(false);
-
-    // Step 2: hydrate data field per proforma in background (serial to avoid timeouts).
-    (async () => {
-      for (const h of safeHeads) {
-        const { data: row, error: rowErr } = await supabase
-          .from("proformas").select("data").eq("id", h.id).maybeSingle();
-        if (rowErr || !row) { if (rowErr) console.error(rowErr); continue; }
-        const d = (row.data ?? {}) as Partial<Proforma>;
-        setProformas((ps) => {
-          const next = ps.map((p) => p.id === h.id ? {
-            ...p,
-            meta: { ...defaultMeta(), ...(d.meta ?? {}) },
-            rows: (d.rows ?? [newRow()]).map((x) => ({ ...newRow(), ...x })),
-            themeColor: d.themeColor ?? p.themeColor,
-            rowsLoaded: true,
-          } : p);
-          try { localStorage.setItem(CACHE_KEY, JSON.stringify(next)); } catch {}
-          return next;
-        });
-      }
-    })();
     return true;
   }, []);
 
@@ -216,10 +154,9 @@ export default function ProformaApp() {
       try {
         const cached = localStorage.getItem(CACHE_KEY);
         if (cached) {
-          const deletedIds = getDeletedIds();
-          const list = (JSON.parse(cached) as Proforma[]).filter((p) => p.rowsLoaded === true && !deletedIds.has(p.id));
+          const list = JSON.parse(cached) as Proforma[];
           if (Array.isArray(list) && list.length > 0) {
-            setProformas(list.map((p) => ({ ...p, rowsLoaded: true })));
+            setProformas(list);
             setLoaded(true);
           }
         }
@@ -316,22 +253,10 @@ export default function ProformaApp() {
   const deleteProforma = async (id: string) => {
     if (proformas.length === 1) { toast.error(lang === "ar" ? "ميصحش تحذف الوحيدة" : "Can't delete the only one"); return; }
     if (!confirm(lang === "ar" ? "تأكيد الحذف؟" : "Delete this proforma?")) return;
-    const before = proformas;
+    await supabase.from("proformas").delete().eq("id", id);
     const next = proformas.filter((p) => p.id !== id);
-    rememberDeletedId(id);
-    dirtyIds.current.delete(id);
     try { localStorage.setItem(CACHE_KEY, JSON.stringify(next)); } catch {}
     setProformas(next); if (activeId === id) setActiveId(next[0]?.id ?? "");
-    const { error } = await supabase.from("proformas").delete().eq("id", id);
-    if (error) {
-      console.error(error);
-      forgetDeletedId(id);
-      setProformas(before);
-      try { localStorage.setItem(CACHE_KEY, JSON.stringify(before)); } catch {}
-      toast.error(lang === "ar" ? "فشل الحذف" : "Delete failed");
-      return;
-    }
-    toast.success(lang === "ar" ? "تم الحذف" : "Deleted");
   };
   const renameProforma = (id: string) => {
     const cur = proformas.find((p) => p.id === id); if (!cur) return;
