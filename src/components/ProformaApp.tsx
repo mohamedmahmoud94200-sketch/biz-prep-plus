@@ -28,7 +28,9 @@ type Proforma = {
 type Lang = "ar" | "en";
 
 const LANG_KEY = "proforma-lang";
-const CACHE_KEY = "proforma-cache-v3";
+const CACHE_KEY = "proforma-cache-lite-v6";
+const DELETED_CACHE_KEY = "proforma-deleted-v1";
+const OLD_CACHE_KEYS = ["proforma-cache-full-v4", "proforma-cache-full-v3"];
 
 const T = {
   ar: {
@@ -83,6 +85,138 @@ const newProforma = (name: string, sortOrder = 0): Proforma => ({
   themeColor: "2BB39B", sortOrder, rowsLoaded: true,
 });
 
+type ProformaHeadRow = {
+  id: string;
+  name: string;
+  sort_order: number;
+  is_primary: boolean | null;
+  meta: unknown;
+  theme_color: string | null;
+};
+
+type ProformaItemLiteRow = {
+  id: string;
+  proforma_id: string;
+  row_order: number;
+  item_name: string;
+  description: string;
+  ctn: string;
+  doz_ctn: string;
+  set_ctn: string;
+  pcs_set: string;
+  price_per_ctn: string;
+  cbm: string;
+  weight: string;
+};
+
+type ProformaItemImageRow = {
+  id: string;
+  proforma_id: string;
+  image: string;
+  packing: string;
+};
+
+const normalizeMeta = (value: unknown): Meta => {
+  const base = defaultMeta();
+  if (!value || typeof value !== "object" || Array.isArray(value)) return base;
+  const src = value as Partial<Record<keyof Meta, unknown>>;
+  return {
+    company: typeof src.company === "string" ? src.company : base.company,
+    address: typeof src.address === "string" ? src.address : base.address,
+    phone: typeof src.phone === "string" ? src.phone : base.phone,
+    email: typeof src.email === "string" ? src.email : base.email,
+    customer: typeof src.customer === "string" ? src.customer : base.customer,
+    date: typeof src.date === "string" ? src.date : base.date,
+    title: typeof src.title === "string" ? src.title : base.title,
+    notes: typeof src.notes === "string" ? src.notes : base.notes,
+    logo: typeof src.logo === "string" ? src.logo : base.logo,
+  };
+};
+
+const itemToRow = (item: ProformaItemLiteRow, images?: Partial<ProformaItemImageRow>): Row => ({
+  id: item.id,
+  itemName: item.item_name ?? "",
+  description: item.description ?? "",
+  image: images?.image ?? "",
+  packing: images?.packing ?? "",
+  ctn: item.ctn ?? "",
+  dozCtn: item.doz_ctn ?? "",
+  setCtn: item.set_ctn ?? "",
+  pcsSet: item.pcs_set ?? "",
+  pricePerCtn: item.price_per_ctn ?? "",
+  cbm: item.cbm ?? "",
+  weight: item.weight ?? "",
+});
+
+const rowToItem = (row: Row, proformaId: string, rowOrder: number) => ({
+  id: row.id,
+  proforma_id: proformaId,
+  row_order: rowOrder,
+  item_name: row.itemName,
+  description: row.description,
+  image: row.image,
+  packing: row.packing,
+  ctn: row.ctn,
+  doz_ctn: row.dozCtn,
+  set_ctn: row.setCtn,
+  pcs_set: row.pcsSet,
+  price_per_ctn: row.pricePerCtn,
+  cbm: row.cbm,
+  weight: row.weight,
+});
+
+const rowToItemUpdate = (row: Row, proformaId: string, rowOrder: number, includeImages: boolean) => ({
+  id: row.id,
+  proforma_id: proformaId,
+  row_order: rowOrder,
+  item_name: row.itemName,
+  description: row.description,
+  ...(includeImages ? { image: row.image, packing: row.packing } : {}),
+  ctn: row.ctn,
+  doz_ctn: row.dozCtn,
+  set_ctn: row.setCtn,
+  pcs_set: row.pcsSet,
+  price_per_ctn: row.pricePerCtn,
+  cbm: row.cbm,
+  weight: row.weight,
+});
+
+const cacheSafe = (list: Proforma[]) => list.map((p) => ({
+  ...p,
+  rowsLoaded: true,
+  rows: p.rows.map((r) => ({ ...r, image: "", packing: "" })),
+}));
+
+const saveCache = (list: Proforma[]) => {
+  try { localStorage.setItem(CACHE_KEY, JSON.stringify(cacheSafe(list))); } catch {}
+};
+
+const getDeletedIds = () => {
+  if (typeof window === "undefined") return new Set<string>();
+  try {
+    const parsed = JSON.parse(localStorage.getItem(DELETED_CACHE_KEY) || "[]");
+    return new Set(Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === "string") : []);
+  } catch {
+    return new Set<string>();
+  }
+};
+
+const saveDeletedIds = (ids: Set<string>) => {
+  try { localStorage.setItem(DELETED_CACHE_KEY, JSON.stringify([...ids])); } catch {}
+};
+
+const rememberDeletedId = (id: string) => {
+  const ids = getDeletedIds();
+  ids.add(id);
+  saveDeletedIds(ids);
+};
+
+const forgetDeletedId = (id: string) => {
+  const ids = getDeletedIds();
+  ids.delete(id);
+  saveDeletedIds(ids);
+};
+
 const num = (s: string) => parseFloat(s || "0") || 0;
 // T.Amount = Ctn × Set/Ctn × Price/Set
 const amount = (r: Row) => +(num(r.ctn) * num(r.setCtn) * num(r.pricePerCtn)).toFixed(2);
@@ -97,12 +231,12 @@ async function processImage(file: File): Promise<string> {
   return new Promise((resolve) => {
     const img = new Image();
     img.onload = () => {
-      const MAX = 2000; let w = img.width, h = img.height;
+      const MAX = 900; let w = img.width, h = img.height;
       if (w > MAX || h > MAX) { const r = Math.min(MAX/w, MAX/h); w = Math.round(w*r); h = Math.round(h*r); }
       const c = document.createElement("canvas"); c.width = w; c.height = h;
       const ctx = c.getContext("2d")!; ctx.imageSmoothingQuality = "high";
       ctx.fillStyle = "#FFF"; ctx.fillRect(0,0,w,h); ctx.drawImage(img,0,0,w,h);
-      resolve(c.toDataURL("image/jpeg", 0.92));
+      resolve(c.toDataURL("image/jpeg", 0.78));
     };
     img.onerror = () => resolve(raw); img.src = raw;
   });
@@ -119,65 +253,122 @@ export default function ProformaApp() {
   const [showThemes, setShowThemes] = useState(false);
   const [showCompany, setShowCompany] = useState(false);
   const [showInvoice, setShowInvoice] = useState(false);
+  const [invoiceTransport, setInvoiceTransport] = useState<number | null>(null);
   const [saveState, setSaveState] = useState<"idle"|"saving"|"saved">("idle");
   const [loadFailed, setLoadFailed] = useState(false);
   const [lang, setLang] = useState<Lang>(() => (typeof window !== "undefined" && (localStorage.getItem(LANG_KEY) as Lang)) || "ar");
   const [sendItem, setSendItem] = useState<Row | null>(null);
   const logoRef = useRef<HTMLInputElement>(null);
   const dirtyIds = useRef<Set<string>>(new Set());
+  const dirtyRowIds = useRef<Map<string, Set<string>>>(new Map());
+  const dirtyImageRowIds = useRef<Map<string, Set<string>>>(new Map());
+  const deletedRowIds = useRef<Map<string, Set<string>>>(new Map());
+  const savingRef = useRef(false);
   const t = T[lang];
 
   /* ----- load ----- */
   const loadAll = useCallback(async () => {
-    const { data, error } = await supabase.from("proformas").select("id, name, sort_order, is_primary, data").order("sort_order").order("created_at");
+    const { data: heads, error } = await supabase
+      .from("proformas")
+      .select("id, name, sort_order, is_primary, meta, theme_color")
+      .order("sort_order")
+      .order("created_at");
     if (error) { console.error(error); setLoadFailed(true); return false; }
-    const heads = data ?? [];
-    const list: Proforma[] = heads.map((r) => {
-      const d = (r.data ?? {}) as Partial<Proforma>;
+    const deletedIds = getDeletedIds();
+    const safeHeads = ((heads ?? []) as ProformaHeadRow[]).filter((r) => !deletedIds.has(r.id));
+
+    let cached: Proforma[] = [];
+    try { cached = JSON.parse(localStorage.getItem(CACHE_KEY) || "[]") as Proforma[]; } catch {}
+    const cacheMap = new Map(cached.map((p) => [p.id, p]));
+
+    const list: Proforma[] = safeHeads.map((r) => {
+      const c = cacheMap.get(r.id);
       return {
-        id: r.id, name: r.name, sortOrder: r.sort_order,
-        meta: { ...defaultMeta(), ...(d.meta ?? {}) },
-        rows: (d.rows ?? [newRow()]).map((x) => ({ ...newRow(), ...x })),
-        themeColor: d.themeColor ?? "2BB39B",
-        isPrimary: r.is_primary ?? d.isPrimary ?? false,
+        id: r.id,
+        name: r.name,
+        sortOrder: r.sort_order,
+        isPrimary: r.is_primary ?? false,
+        meta: normalizeMeta(r.meta ?? c?.meta),
+        rows: c?.rows ?? [newRow()],
+        themeColor: r.theme_color ?? c?.themeColor ?? "2BB39B",
         rowsLoaded: true,
       };
     });
+
+    const ids = safeHeads.map((h) => h.id);
+    if (ids.length > 0) {
+      const { data: items, error: itemErr } = await supabase
+        .from("proforma_items")
+        .select("id, proforma_id, row_order, item_name, description, ctn, doz_ctn, set_ctn, pcs_set, price_per_ctn, cbm, weight")
+        .in("proforma_id", ids)
+        .order("row_order");
+      if (itemErr) { console.error(itemErr); setLoadFailed(true); return false; }
+
+      const rowsByProforma = new Map<string, Row[]>();
+      ((items ?? []) as ProformaItemLiteRow[]).forEach((item) => {
+        const proformaRows = rowsByProforma.get(item.proforma_id) ?? [];
+        const cachedRow = cacheMap.get(item.proforma_id)?.rows.find((r) => r.id === item.id);
+        proformaRows.push(itemToRow(item, cachedRow));
+        rowsByProforma.set(item.proforma_id, proformaRows);
+      });
+
+      list.forEach((p) => { p.rows = rowsByProforma.get(p.id) ?? [newRow()]; });
+
+      void supabase
+        .from("proforma_items")
+        .select("id, proforma_id, image, packing")
+        .in("proforma_id", ids)
+        .then(({ data: imageRows, error: imageErr }) => {
+          if (imageErr) { console.error(imageErr); return; }
+          setProformas((ps) => {
+            const imagesById = new Map((imageRows ?? []).map((r) => [r.id, r as ProformaItemImageRow]));
+            const next = ps.map((p) => ({
+              ...p,
+              rows: p.rows.map((r) => {
+                const images = imagesById.get(r.id);
+                return images ? { ...r, image: images.image ?? "", packing: images.packing ?? "" } : r;
+              }),
+            }));
+            saveCache(next);
+            return next;
+          });
+        });
+    }
+
     setProformas(list);
-    try { localStorage.setItem(CACHE_KEY, JSON.stringify(list)); } catch {}
+    saveCache(list);
     setLoadFailed(false);
+    OLD_CACHE_KEYS.forEach((key) => { try { localStorage.removeItem(key); } catch {} });
     return true;
+  }, []);
+
+  const readCachedList = useCallback(() => {
+    try {
+      const cached = localStorage.getItem(CACHE_KEY);
+      if (!cached) return [] as Proforma[];
+      const deletedIds = getDeletedIds();
+      const list = (JSON.parse(cached) as Proforma[]).filter((p) => p.rowsLoaded === true && !deletedIds.has(p.id));
+      return Array.isArray(list) ? list : [];
+    } catch {
+      return [] as Proforma[];
+    }
   }, []);
 
   useEffect(() => {
     (async () => {
-      try {
-        const cached = localStorage.getItem(CACHE_KEY);
-        if (cached) {
-          const list = JSON.parse(cached) as Proforma[];
-          if (Array.isArray(list) && list.length > 0) {
-            setProformas(list);
-            setLoaded(true);
-          }
-        }
-      } catch {}
+      const cachedList = readCachedList();
+      if (cachedList.length > 0) {
+        setProformas(cachedList.map((p) => ({ ...p, rowsLoaded: true })));
+        setLoaded(true);
+      }
       const ok = await loadAll();
       if (ok) setLoaded(true);
     })();
-  }, [loadAll]);
-
-  const loadRowsForProforma = useCallback(async (id: string) => {
-    const existing = proformas.find((p) => p.id === id);
-    if (!existing || existing.rowsLoaded) return;
-    const { data, error } = await supabase.from("proformas").select("data").eq("id", id).single();
-    if (error) { console.error(error); toast.error("فشل تحميل البروفورما"); return; }
-    const d = (data?.data ?? {}) as Partial<Proforma>;
-    setProformas((ps) => ps.map((p) => p.id === id ? { ...p, rows: (d.rows ?? [newRow()]).map((x) => ({ ...newRow(), ...x })), rowsLoaded: true } : p));
-  }, [proformas]);
+  }, [loadAll, readCachedList]);
 
   useEffect(() => {
     if (!loaded || proformas.length === 0) return;
-    try { localStorage.setItem(CACHE_KEY, JSON.stringify(proformas)); } catch {}
+    saveCache(proformas);
   }, [loaded, proformas]);
 
   // ensure at least one + pick active
@@ -185,7 +376,7 @@ export default function ProformaApp() {
     if (!loaded || loadFailed) return;
     if (proformas.length === 0) {
       const p = newProforma("New Proforma", 0);
-      supabase.from("proformas").insert({ id: p.id, name: p.name, sort_order: 0, is_primary: false, data: { meta: p.meta, rows: p.rows, themeColor: p.themeColor } }).then(loadAll);
+      supabase.from("proformas").insert({ id: p.id, name: p.name, sort_order: 0, is_primary: false, meta: p.meta, theme_color: p.themeColor, data: {} }).then(loadAll);
       return;
     }
     if (!activeId || !proformas.find((p) => p.id === activeId)) setActiveId((proformas.find((p) => p.isPrimary) ?? proformas[0]).id);
@@ -199,28 +390,87 @@ export default function ProformaApp() {
   const themeColor = active?.themeColor ?? "2BB39B";
   const accent = `#${themeColor}`;
 
-  useEffect(() => {
-    if (loaded && active && !active.rowsLoaded) void loadRowsForProforma(active.id);
-  }, [loaded, active, loadRowsForProforma]);
-
   /* ----- save logic ----- */
   const flushSave = useCallback(async () => {
-    if (dirtyIds.current.size === 0) return;
-    const ids = [...dirtyIds.current]; dirtyIds.current.clear();
+    if (savingRef.current) return;
+    const ids = [...dirtyIds.current];
+    const rowEntries = [...dirtyRowIds.current.entries()].map(([proformaId, rowIds]) => [proformaId, [...rowIds]] as const);
+    const imageEntries = [...dirtyImageRowIds.current.entries()].map(([proformaId, rowIds]) => [proformaId, [...rowIds]] as const);
+    const deleteEntries = [...deletedRowIds.current.entries()].map(([proformaId, rowIds]) => [proformaId, [...rowIds]] as const);
+    if (ids.length === 0 && rowEntries.length === 0 && imageEntries.length === 0 && deleteEntries.length === 0) return;
+
+    savingRef.current = true;
+    dirtyIds.current.clear();
+    dirtyRowIds.current.clear();
+    dirtyImageRowIds.current.clear();
+    deletedRowIds.current.clear();
     setSaveState("saving");
-    const targets = proformas.filter((p) => ids.includes(p.id));
-    const results = await Promise.all(targets.map((p) => supabase.from("proformas").upsert({
-        id: p.id, name: p.name, sort_order: p.sortOrder, is_primary: !!p.isPrimary,
-        data: { meta: p.meta, rows: p.rows, themeColor: p.themeColor, isPrimary: !!p.isPrimary },
-      })));
-    const failed = results.find((r) => r.error);
-    if (failed?.error) { console.error(failed.error); ids.forEach((id) => dirtyIds.current.add(id)); toast.error("فشل الحفظ / Save failed"); setSaveState("idle"); return; }
-    setSaveState("saved");
-    setTimeout(() => setSaveState((s) => (s === "saved" ? "idle" : s)), 1500);
+    try {
+      const currentById = new Map(proformas.map((p) => [p.id, p]));
+      const metaTargets = proformas.filter((p) => ids.includes(p.id));
+      const rowPayload = rowEntries.flatMap(([proformaId, rowIds]) => {
+        const p = currentById.get(proformaId);
+        if (!p) return [];
+        const wanted = new Set(rowIds);
+        const imageWanted = new Set(imageEntries.find(([id]) => id === proformaId)?.[1] ?? []);
+        return p.rows.flatMap((r, idx) => wanted.has(r.id) ? [rowToItemUpdate(r, p.id, idx, imageWanted.has(r.id))] : []);
+      });
+
+      const requests: PromiseLike<{ error: unknown }>[] = [];
+      if (metaTargets.length > 0) {
+        requests.push(supabase.from("proformas").upsert(metaTargets.map((p) => ({
+          id: p.id, name: p.name, sort_order: p.sortOrder, is_primary: !!p.isPrimary,
+          meta: p.meta, theme_color: p.themeColor, data: {},
+        }))));
+      }
+      if (rowPayload.length > 0) requests.push(supabase.from("proforma_items").upsert(rowPayload));
+      deleteEntries.forEach(([, rowIds]) => {
+        if (rowIds.length > 0) requests.push(supabase.from("proforma_items").delete().in("id", rowIds));
+      });
+
+      const results = await Promise.all(requests);
+      const failed = results.find((r) => r.error);
+      if (failed?.error) throw failed.error;
+      setSaveState("saved");
+      setTimeout(() => setSaveState((s) => (s === "saved" ? "idle" : s)), 1500);
+    } catch (error) {
+      console.error(error);
+      ids.forEach((id) => dirtyIds.current.add(id));
+      rowEntries.forEach(([proformaId, rowIds]) => dirtyRowIds.current.set(proformaId, new Set(rowIds)));
+      imageEntries.forEach(([proformaId, rowIds]) => dirtyImageRowIds.current.set(proformaId, new Set(rowIds)));
+      deleteEntries.forEach(([proformaId, rowIds]) => deletedRowIds.current.set(proformaId, new Set(rowIds)));
+      toast.error("فشل الحفظ / Save failed");
+      setSaveState("idle");
+    } finally {
+      savingRef.current = false;
+    }
   }, [proformas]);
 
   const markDirty = useCallback((id: string) => {
     dirtyIds.current.add(id);
+    setSaveState((s) => (s === "saving" ? s : "idle"));
+  }, []);
+
+  const markRowsDirty = useCallback((proformaId: string, rowIds: string[], includeImages = false) => {
+    const rows = dirtyRowIds.current.get(proformaId) ?? new Set<string>();
+    rowIds.forEach((rowId) => rows.add(rowId));
+    dirtyRowIds.current.set(proformaId, rows);
+    if (includeImages) {
+      const imageRows = dirtyImageRowIds.current.get(proformaId) ?? new Set<string>();
+      rowIds.forEach((rowId) => imageRows.add(rowId));
+      dirtyImageRowIds.current.set(proformaId, imageRows);
+    }
+    setSaveState((s) => (s === "saving" ? s : "idle"));
+  }, []);
+
+  const markRowsDeleted = useCallback((proformaId: string, rowIds: string[]) => {
+    const deleted = deletedRowIds.current.get(proformaId) ?? new Set<string>();
+    const dirty = dirtyRowIds.current.get(proformaId) ?? new Set<string>();
+    const dirtyImages = dirtyImageRowIds.current.get(proformaId) ?? new Set<string>();
+    rowIds.forEach((rowId) => { deleted.add(rowId); dirty.delete(rowId); dirtyImages.delete(rowId); });
+    deletedRowIds.current.set(proformaId, deleted);
+    dirtyRowIds.current.set(proformaId, dirty);
+    dirtyImageRowIds.current.set(proformaId, dirtyImages);
     setSaveState((s) => (s === "saving" ? s : "idle"));
   }, []);
 
@@ -234,8 +484,17 @@ export default function ProformaApp() {
   const setRows = (u: Row[] | ((rs: Row[]) => Row[])) => {
     const targetId = activeId || active?.id;
     if (!targetId) return;
-    setProformas((ps) => ps.map((p) => (p.id === targetId ? { ...p, rows: typeof u === "function" ? (u as (r: Row[]) => Row[])(p.rows) : u } : p)));
-    markDirty(targetId);
+    setProformas((ps) => ps.map((p) => {
+      if (p.id !== targetId) return p;
+      const beforeIds = new Set(p.rows.map((r) => r.id));
+      const nextRows = typeof u === "function" ? (u as (r: Row[]) => Row[])(p.rows) : u;
+      const afterIds = new Set(nextRows.map((r) => r.id));
+      const changed = nextRows.map((r) => r.id);
+      const removed = p.rows.filter((r) => !afterIds.has(r.id)).map((r) => r.id);
+      markRowsDirty(targetId, changed, nextRows.some((r) => !beforeIds.has(r.id) && (!!r.image || !!r.packing)));
+      if (removed.length > 0) markRowsDeleted(targetId, removed);
+      return { ...p, rows: nextRows };
+    }));
   };
   const setThemeColor = (c: string) => updateActive({ themeColor: c.replace("#","") });
 
@@ -243,20 +502,34 @@ export default function ProformaApp() {
   const createProforma = async () => {
     const p = newProforma("New Proforma", proformas.length);
     if (active) { p.meta = { ...active.meta, customer: "", date: new Date().toISOString().slice(0,10) }; p.themeColor = active.themeColor; }
-    const { error } = await supabase.from("proformas").insert({ id: p.id, name: p.name, sort_order: p.sortOrder, is_primary: false, data: { meta: p.meta, rows: p.rows, themeColor: p.themeColor, isPrimary: false } });
+    const { error } = await supabase.from("proformas").insert({ id: p.id, name: p.name, sort_order: p.sortOrder, is_primary: false, meta: p.meta, theme_color: p.themeColor, data: {} });
     if (error) { toast.error("فشل الإنشاء"); return; }
+    const { error: itemError } = await supabase.from("proforma_items").insert(p.rows.map((row, idx) => rowToItem(row, p.id, idx)));
+    if (itemError) { console.error(itemError); toast.error("فشل إنشاء المنتجات"); return; }
     const next = [...proformas, p];
     setProformas(next); setActiveId(p.id);
-    try { localStorage.setItem(CACHE_KEY, JSON.stringify(next)); } catch {}
+    saveCache(next);
     toast.success(lang === "ar" ? "تم الإنشاء" : "Created");
   };
   const deleteProforma = async (id: string) => {
     if (proformas.length === 1) { toast.error(lang === "ar" ? "ميصحش تحذف الوحيدة" : "Can't delete the only one"); return; }
     if (!confirm(lang === "ar" ? "تأكيد الحذف؟" : "Delete this proforma?")) return;
-    await supabase.from("proformas").delete().eq("id", id);
+    const before = proformas;
     const next = proformas.filter((p) => p.id !== id);
-    try { localStorage.setItem(CACHE_KEY, JSON.stringify(next)); } catch {}
+    rememberDeletedId(id);
+    dirtyIds.current.delete(id);
+    saveCache(next);
     setProformas(next); if (activeId === id) setActiveId(next[0]?.id ?? "");
+    const { error } = await supabase.from("proformas").delete().eq("id", id);
+    if (error) {
+      console.error(error);
+      forgetDeletedId(id);
+      setProformas(before);
+      saveCache(before);
+      toast.error(lang === "ar" ? "فشل الحذف" : "Delete failed");
+      return;
+    }
+    toast.success(lang === "ar" ? "تم الحذف" : "Deleted");
   };
   const renameProforma = (id: string) => {
     const cur = proformas.find((p) => p.id === id); if (!cur) return;
@@ -269,7 +542,7 @@ export default function ProformaApp() {
   const togglePrimary = async (id: string) => {
     const next = proformas.map((p) => (p.id === id ? { ...p, isPrimary: !p.isPrimary } : p));
     setProformas(next);
-    try { localStorage.setItem(CACHE_KEY, JSON.stringify(next)); } catch {}
+    saveCache(next);
     const target = next.find((p) => p.id === id);
     if (!target) return;
     toast.success(lang === "ar" ? "اتحدثت المكتبة فوراً" : "Library updated instantly");
@@ -286,7 +559,12 @@ export default function ProformaApp() {
     return { tCtn, tAmount, tCBM, tWt };
   }, [rows]);
 
-  const updateRow = (id: string, patch: Partial<Row>) => setRows((rs) => rs.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+  const updateRow = (id: string, patch: Partial<Row>) => {
+    const targetId = activeId || active?.id;
+    if (!targetId) return;
+    setProformas((ps) => ps.map((p) => p.id === targetId ? { ...p, rows: p.rows.map((r) => (r.id === id ? { ...r, ...patch } : r)) } : p));
+    markRowsDirty(targetId, [id], "image" in patch || "packing" in patch);
+  };
   const removeRow = (id: string) => {
     const row = rows.find((r) => r.id === id);
     if (!confirm(lang === "ar" ? `تأكيد حذف المنتج ${row?.itemName || ""}؟` : `Delete ${row?.itemName || "this item"}?`)) return;
@@ -306,7 +584,7 @@ export default function ProformaApp() {
       return p.rowsLoaded ? { ...p, rows: [...p.rows, nextRow] } : p;
     });
     setProformas(updated);
-    try { localStorage.setItem(CACHE_KEY, JSON.stringify(updated)); } catch {}
+    saveCache(updated);
     toast.success(lang === "ar" ? `تم الإرسال إلى ${targetIds.length} بروفورما` : `Sent to ${targetIds.length} proforma(s)`);
     void Promise.all(targetIds.map((targetId) => supabase.rpc("append_proforma_row", {
       target_id: targetId,
@@ -343,13 +621,18 @@ export default function ProformaApp() {
   const fmtDate = (d: string) => { if (!d) return ""; const [y,m,da] = d.split("-"); return `${da}/${m}/${y}`; };
 
   /* ───── PDF — capture #printable so Arabic & alignment match exactly ───── */
-  const exportPDF = async (invoiceOnly = false) => {
+  const exportPDF = async (invoiceOnly = false, transport = 0) => {
     const el = document.getElementById("printable");
     if (!el) return;
     toast.message(lang === "ar" ? "بنحضّر الملف…" : "Preparing PDF…");
     // Hide action column during capture
     el.classList.add("pdf-capture");
-    if (invoiceOnly) el.classList.add("invoice-capture");
+    if (invoiceOnly) {
+      el.classList.add("invoice-capture");
+      setInvoiceTransport(transport);
+      // wait two frames so React renders the extra totals cards before capture
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(null))));
+    }
     try {
       const canvas = await html2canvas(el, {
         scale: 2, useCORS: true, backgroundColor: "#ffffff", logging: false,
@@ -392,10 +675,11 @@ export default function ProformaApp() {
     } finally {
       el.classList.remove("pdf-capture");
       el.classList.remove("invoice-capture");
+      if (invoiceOnly) setInvoiceTransport(null);
     }
   };
 
-  const exportPPTX = async (invoiceOnly = false) => {
+  const exportPPTX = async (invoiceOnly = false, transport = 0) => {
     const pptx = new PptxGenJS(); pptx.layout = "LAYOUT_WIDE"; pptx.title = meta.title;
     const ac = themeColor;
     const perSlideFirst = 5; // header takes vertical space
@@ -486,8 +770,12 @@ export default function ProformaApp() {
       if (isLast) {
         const cY = tY + rowH + slice.length*rowH + 0.25;
         s.addText(`• ${meta.notes}`, { x: 0.3, y: cY-0.05, w: 12.73, h: 0.3, fontSize: 11, bold: true, color: "222222", align: "right" });
+        const invTotal = +(totals.tAmount + (transport || 0)).toFixed(2);
         const cards = invoiceOnly ? [
-          { l: "T.Ctn", v: String(totals.tCtn) }, { l: "T.Amount", v: String(totals.tAmount) },
+          { l: "T.Ctn", v: String(totals.tCtn) },
+          { l: "T.Amount", v: String(totals.tAmount) },
+          { l: "Transport", v: String(transport || 0) },
+          { l: "Total", v: String(invTotal) },
         ] : [
           { l: "T.Ctn", v: String(totals.tCtn) }, { l: "T.CBM", v: totals.tCBM.toFixed(2) },
           { l: "T.Weight", v: totals.tWt.toFixed(2) }, { l: "T.Amount", v: String(totals.tAmount) },
@@ -642,10 +930,14 @@ export default function ProformaApp() {
           <div className="px-6 pt-3"><div className="text-end text-[13px] font-semibold">• {meta.notes}</div></div>
           <div className="totals-row flex flex-wrap justify-end gap-3 px-6 py-4">
             {[
-              { l: t.totals.ctn, v: totals.tCtn },
+              { l: t.totals.ctn, v: String(totals.tCtn) },
               { l: t.totals.cbm, v: totals.tCBM.toFixed(2) },
               { l: t.totals.weight, v: totals.tWt.toFixed(2) },
-              { l: t.totals.amount, v: totals.tAmount },
+              { l: t.totals.amount, v: String(totals.tAmount) },
+              ...(invoiceTransport !== null ? [
+                { l: "Transport", v: String(invoiceTransport) },
+                { l: "Total", v: String(+(totals.tAmount + invoiceTransport).toFixed(2)) },
+              ] : []),
             ].map((c) => (
               <div key={c.l} className="min-w-[160px] overflow-hidden rounded-md border" style={{ borderColor: accent }}>
                 <div className="px-3 py-1.5 text-center text-xs font-bold uppercase text-white" style={{ background: accent }}>{c.l}</div>
@@ -667,7 +959,10 @@ export default function ProformaApp() {
       </main>
 
       {showLibrary && <LibraryModal items={library} accent={accent} lang={lang} onPick={(r) => { copyFromLibrary(r); }} onClose={() => setShowLibrary(false)} />}
-      {showInvoice && <InvoiceModal accent={accent} lang={lang} onCancel={() => setShowInvoice(false)} onPdf={async () => { setShowInvoice(false); await exportPDF(true); }} onPptx={async () => { setShowInvoice(false); await exportPPTX(true); }} />}
+      {showInvoice && <InvoiceModal accent={accent} lang={lang}
+        onCancel={() => setShowInvoice(false)}
+        onPdf={async (transport) => { setShowInvoice(false); await exportPDF(true, transport); }}
+        onPptx={async (transport) => { setShowInvoice(false); await exportPPTX(true, transport); }} />}
       {sendItem && (
         <SendToModal
           item={sendItem} accent={accent} lang={lang}
@@ -903,20 +1198,36 @@ function SendToModal({ item, targets, accent, lang, onCancel, onSend }:
 }
 
 function InvoiceModal({ accent, lang, onCancel, onPdf, onPptx }:
-  { accent: string; lang: Lang; onCancel: () => void; onPdf: () => void; onPptx: () => void; }) {
+  { accent: string; lang: Lang; onCancel: () => void; onPdf: (transport: number) => void; onPptx: (transport: number) => void; }) {
+  const [transport, setTransport] = useState<string>("");
+  const value = Number(transport) || 0;
+  const isAr = lang === "ar";
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onCancel}>
-      <div className="w-full max-w-sm overflow-hidden rounded-lg bg-white shadow-2xl" onClick={(e) => e.stopPropagation()} dir={lang === "ar" ? "rtl" : "ltr"}>
+      <div className="w-full max-w-sm overflow-hidden rounded-lg bg-white shadow-2xl" onClick={(e) => e.stopPropagation()} dir={isAr ? "rtl" : "ltr"}>
         <div className="flex items-center justify-between border-b px-5 py-3" style={{ background: `${accent}15` }}>
           <div>
             <h3 className="font-semibold">Create Invoice</h3>
-            <p className="text-xs text-muted-foreground">{lang === "ar" ? "التصدير لحد عمود T.Amount فقط" : "Exports columns up to T.Amount only"}</p>
+            <p className="text-xs text-muted-foreground">{isAr ? "التصدير لحد عمود T.Amount فقط" : "Exports columns up to T.Amount only"}</p>
           </div>
           <button onClick={onCancel} className="text-muted-foreground hover:text-foreground"><X className="h-5 w-5" /></button>
         </div>
-        <div className="grid grid-cols-2 gap-3 p-5">
-          <Button onClick={onPdf} className="bg-sky-600 text-white hover:bg-sky-700"><FileDown className="me-1 h-4 w-4" /> PDF</Button>
-          <Button onClick={onPptx} className="bg-orange-500 text-white hover:bg-orange-600"><Presentation className="me-1 h-4 w-4" /> PowerPoint</Button>
+        <div className="space-y-3 p-5">
+          <div>
+            <label className="text-xs font-medium text-muted-foreground">Transport</label>
+            <Input
+              type="number"
+              inputMode="decimal"
+              value={transport}
+              onChange={(e) => setTransport(e.target.value)}
+              placeholder="0"
+              className="mt-1 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Button onClick={() => onPdf(value)} className="bg-sky-600 text-white hover:bg-sky-700"><FileDown className="me-1 h-4 w-4" /> PDF</Button>
+            <Button onClick={() => onPptx(value)} className="bg-orange-500 text-white hover:bg-orange-600"><Presentation className="me-1 h-4 w-4" /> PowerPoint</Button>
+          </div>
         </div>
       </div>
     </div>
