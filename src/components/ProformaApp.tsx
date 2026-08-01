@@ -637,6 +637,8 @@ export default function ProformaApp() {
     try {
       const url = await storeImage(f);
       updateRow(id, { [field]: url } as Partial<Row>);
+      const { error } = await supabase.from("proforma_items").update({ [field]: url }).eq("id", id);
+      if (error) throw error;
     } catch (error) {
       console.error(error);
       toast.error(lang === "ar" ? "فشل رفع الصورة — حاول مرة أخرى" : "Image upload failed — try again");
@@ -647,6 +649,11 @@ export default function ProformaApp() {
     try {
       const url = await storeImage(f);
       setMeta({ ...meta, logo: url });
+      const targetId = activeId || active?.id;
+      if (targetId) {
+        const { error } = await supabase.from("proformas").update({ meta: { ...meta, logo: url } }).eq("id", targetId);
+        if (error) throw error;
+      }
     } catch (error) {
       console.error(error);
       toast.error(lang === "ar" ? "فشل رفع الشعار — حاول مرة أخرى" : "Logo upload failed — try again");
