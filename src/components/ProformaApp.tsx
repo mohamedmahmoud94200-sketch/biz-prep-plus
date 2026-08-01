@@ -181,10 +181,13 @@ const rowToItemUpdate = (row: Row, proformaId: string, rowOrder: number, include
   weight: row.weight,
 });
 
+const isDataUrl = (s: string) => typeof s === "string" && s.startsWith("data:");
+// keep light-weight storage URLs in cache, drop heavy base64 blobs
+const cacheImg = (s: string) => (!s || isDataUrl(s) ? "" : s);
 const cacheSafe = (list: Proforma[]) => list.map((p) => ({
   ...p,
   rowsLoaded: true,
-  rows: p.rows.map((r) => ({ ...r, image: "", packing: "" })),
+  rows: p.rows.map((r) => ({ ...r, image: cacheImg(r.image), packing: cacheImg(r.packing) })),
 }));
 
 const saveCache = (list: Proforma[]) => {
@@ -242,6 +245,47 @@ async function processImage(file: File): Promise<string> {
   });
 }
 
+/* ───── image storage (files live in the bucket, DB only keeps the URL) ───── */
+const IMG_BUCKET = "proforma-images";
+
+async function dataUrlToBlob(dataUrl: string): Promise<Blob> {
+  const res = await fetch(dataUrl);
+  return res.blob();
+}
+
+async function uploadDataUrl(dataUrl: string): Promise<string> {
+  const blob = await dataUrlToBlob(dataUrl);
+  const type = blob.type || "image/jpeg";
+  const ext = type.includes("png") ? "png" : type.includes("webp") ? "webp" : "jpg";
+  const path = `${crypto.randomUUID()}.${ext}`;
+  const { error } = await supabase.storage.from(IMG_BUCKET).upload(path, blob, { contentType: type, upsert: false });
+  if (error) throw error;
+  return supabase.storage.from(IMG_BUCKET).getPublicUrl(path).data.publicUrl;
+}
+
+async function storeImage(file: File): Promise<string> {
+  const dataUrl = await processImage(file);
+  try { return await uploadDataUrl(dataUrl); } catch { return dataUrl; }
+}
+
+const dataUrlCache = new Map<string, string>();
+async function toDataUrl(src: string): Promise<string> {
+  if (!src || isDataUrl(src)) return src;
+  const hit = dataUrlCache.get(src);
+  if (hit) return hit;
+  try {
+    const blob = await (await fetch(src, { mode: "cors" })).blob();
+    const out = await new Promise<string>((res, rej) => {
+      const fr = new FileReader();
+      fr.onload = () => res(fr.result as string);
+      fr.onerror = rej;
+      fr.readAsDataURL(blob);
+    });
+    dataUrlCache.set(src, out);
+    return out;
+  } catch { return src; }
+}
+
 /* ───────────────────────────  COMPONENT  ─────────────────────────── */
 
 export default function ProformaApp() {
@@ -265,6 +309,53 @@ export default function ProformaApp() {
   const deletedRowIds = useRef<Map<string, Set<string>>>(new Map());
   const savingRef = useRef(false);
   const t = T[lang];
+
+  /* ----- images: batched hydration + one-time migration to storage ----- */
+  const hydrateImages = useCallback(async (itemIds: string[]) => {
+    const BATCH = 4;
+    for (let i = 0; i < itemIds.length; i += BATCH) {
+      const batch = itemIds.slice(i, i + BATCH);
+      const { data, error } = await supabase
+        .from("proforma_items")
+        .select("id, proforma_id, image, packing")
+        .in("id", batch);
+      if (error) { console.error(error); continue; }
+      const imagesById = new Map(((data ?? []) as ProformaItemImageRow[]).map((r) => [r.id, r]));
+      setProformas((ps) => {
+        const next = ps.map((p) => ({
+          ...p,
+          rows: p.rows.map((r) => {
+            const img = imagesById.get(r.id);
+            return img ? { ...r, image: img.image ?? "", packing: img.packing ?? "" } : r;
+          }),
+        }));
+        saveCache(next);
+        return next;
+      });
+
+      // Move any legacy base64 image out of the database into file storage.
+      for (const row of imagesById.values()) {
+        const patch: { image?: string; packing?: string } = {};
+        if (isDataUrl(row.image)) {
+          try { patch.image = await uploadDataUrl(row.image); } catch { /* keep as is */ }
+        }
+        if (isDataUrl(row.packing)) {
+          try { patch.packing = await uploadDataUrl(row.packing); } catch { /* keep as is */ }
+        }
+        if (Object.keys(patch).length === 0) continue;
+        const { error: upErr } = await supabase.from("proforma_items").update(patch).eq("id", row.id);
+        if (upErr) { console.error(upErr); continue; }
+        setProformas((ps) => {
+          const next = ps.map((p) => ({
+            ...p,
+            rows: p.rows.map((r) => (r.id === row.id ? { ...r, ...patch } : r)),
+          }));
+          saveCache(next);
+          return next;
+        });
+      }
+    }
+  }, []);
 
   /* ----- load ----- */
   const loadAll = useCallback(async () => {
@@ -314,25 +405,9 @@ export default function ProformaApp() {
 
       list.forEach((p) => { p.rows = rowsByProforma.get(p.id) ?? [newRow()]; });
 
-      void supabase
-        .from("proforma_items")
-        .select("id, proforma_id, image, packing")
-        .in("proforma_id", ids)
-        .then(({ data: imageRows, error: imageErr }) => {
-          if (imageErr) { console.error(imageErr); return; }
-          setProformas((ps) => {
-            const imagesById = new Map((imageRows ?? []).map((r) => [r.id, r as ProformaItemImageRow]));
-            const next = ps.map((p) => ({
-              ...p,
-              rows: p.rows.map((r) => {
-                const images = imagesById.get(r.id);
-                return images ? { ...r, image: images.image ?? "", packing: images.packing ?? "" } : r;
-              }),
-            }));
-            saveCache(next);
-            return next;
-          });
-        });
+      // Images are fetched in small batches so a single huge query can never time out.
+      const allItemIds = ((items ?? []) as ProformaItemLiteRow[]).map((i) => i.id);
+      void hydrateImages(allItemIds);
     }
 
     setProformas(list);
@@ -340,7 +415,7 @@ export default function ProformaApp() {
     setLoadFailed(false);
     OLD_CACHE_KEYS.forEach((key) => { try { localStorage.removeItem(key); } catch {} });
     return true;
-  }, []);
+  }, [hydrateImages]);
 
   const readCachedList = useCallback(() => {
     try {
@@ -614,9 +689,9 @@ export default function ProformaApp() {
   const onImage = async (id: string, f: File | null, field: "image" | "packing") => {
     if (!f) return;
     if (f.size > 10 * 1024 * 1024) return toast.error("الصورة كبيرة (>10MB)");
-    const url = await processImage(f); updateRow(id, { [field]: url } as Partial<Row>);
+    const url = await storeImage(f); updateRow(id, { [field]: url } as Partial<Row>);
   };
-  const onLogo = async (f: File | null) => { if (!f) return; const url = await processImage(f); setMeta({ ...meta, logo: url }); };
+  const onLogo = async (f: File | null) => { if (!f) return; const url = await storeImage(f); setMeta({ ...meta, logo: url }); };
 
   const fmtDate = (d: string) => { if (!d) return ""; const [y,m,da] = d.split("-"); return `${da}/${m}/${y}`; };
 
@@ -681,6 +756,11 @@ export default function ProformaApp() {
 
   const exportPPTX = async (invoiceOnly = false, transport = 0) => {
     const pptx = new PptxGenJS(); pptx.layout = "LAYOUT_WIDE"; pptx.title = meta.title;
+    // PowerPoint needs embedded image data, so resolve any stored URLs first.
+    const srcList = [meta.logo, ...rows.flatMap((r) => [r.image, r.packing])].filter(Boolean);
+    const resolved = new Map<string, string>();
+    for (const src of Array.from(new Set(srcList))) resolved.set(src, await toDataUrl(src));
+    const imgData = (src: string) => resolved.get(src) ?? src;
     const ac = themeColor;
     const perSlideFirst = 5; // header takes vertical space
     const perSlideMid = 7;
@@ -722,7 +802,7 @@ export default function ProformaApp() {
         // Full header banner
         s.addShape("roundRect", { x: 0.3, y: 0.25, w: 12.73, h: 1.2, fill: { color: ac }, line: { color: ac }, rectRadius: 0.08 });
         s.addShape("roundRect", { x: 0.45, y: 0.4, w: 0.9, h: 0.9, fill: { color: "FFFFFF" }, line: { color: "FFFFFF" }, rectRadius: 0.05 });
-        if (meta.logo) { try { s.addImage({ data: meta.logo, x: 0.5, y: 0.45, w: 0.8, h: 0.8 }); } catch {} }
+        if (meta.logo) { try { s.addImage({ data: imgData(meta.logo), x: 0.5, y: 0.45, w: 0.8, h: 0.8 }); } catch {} }
         s.addText("proforma", { x: 8, y: 0.55, w: 4.6, h: 0.8, fontSize: 40, bold: true, color: "FFFFFF", align: "right" });
         s.addText("CUSTOMER", { x: 0.4, y: 1.55, w: 3, h: 0.2, fontSize: 8, color: "888888" });
         s.addText("DATE", { x: 9.6, y: 1.55, w: 3, h: 0.2, fontSize: 8, color: "888888", align: "right" });
@@ -762,7 +842,7 @@ export default function ProformaApp() {
         const cw = colW[oc]; const y = tY + rowH + ri*rowH + 0.04; const size = rowH - 0.12;
         const cx = x + (cw-size)/2;
         try {
-          s.addImage({ data: src, x: cx, y, w: size, h: size, sizing: { type: "contain", w: size, h: size } });
+          s.addImage({ data: imgData(src), x: cx, y, w: size, h: size, sizing: { type: "contain", w: size, h: size } });
         } catch {}
       };
       slice.forEach((r, idx) => { overlay(3, r.image, idx); overlay(4, r.packing, idx); });
@@ -880,7 +960,7 @@ export default function ProformaApp() {
           {/* Banner */}
           <div className="relative flex items-center justify-between px-6 py-5" style={{ background: accent }}>
             <button type="button" onClick={() => logoRef.current?.click()} className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-md bg-white text-[10px] font-bold uppercase leading-tight shadow" style={{ color: accent }} title="Upload logo">
-              {meta.logo ? <img src={meta.logo} alt="logo" className="h-full w-full object-contain p-1" /> : <span className="px-1 text-center">{meta.company.split(" ").slice(0,2).join(" ")}</span>}
+              {meta.logo ? <img src={meta.logo} crossOrigin="anonymous" alt="logo" className="h-full w-full object-contain p-1" /> : <span className="px-1 text-center">{meta.company.split(" ").slice(0,2).join(" ")}</span>}
             </button>
             <input ref={logoRef} type="file" accept="image/*" className="hidden" onChange={(e) => onLogo(e.target.files?.[0] ?? null)} />
             <h2 className="text-5xl font-extrabold lowercase tracking-tight text-white">{t.proforma}</h2>
@@ -1078,7 +1158,7 @@ function ImgCell({ src, onPick, icon }: { src: string; onPick: (f: File | null) 
   return (
     <>
       <button type="button" onClick={() => ref.current?.click()} className={`img-cell-btn mx-auto flex h-14 w-14 items-center justify-center overflow-hidden rounded border ${src ? "" : "border-dashed bg-muted/30"} hover:border-foreground`}>
-        {src ? <img src={src} alt="" className="h-full w-full object-contain" /> : icon === "img" ? <ImageIcon className="h-4 w-4 text-muted-foreground" /> : <Package className="h-4 w-4 text-muted-foreground" />}
+        {src ? <img src={src} crossOrigin="anonymous" alt="" className="h-full w-full object-contain" /> : icon === "img" ? <ImageIcon className="h-4 w-4 text-muted-foreground" /> : <Package className="h-4 w-4 text-muted-foreground" />}
       </button>
       <input ref={ref} type="file" accept="image/*" className="hidden" onChange={(e) => onPick(e.target.files?.[0] ?? null)} />
     </>
