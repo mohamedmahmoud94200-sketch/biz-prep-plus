@@ -181,10 +181,13 @@ const rowToItemUpdate = (row: Row, proformaId: string, rowOrder: number, include
   weight: row.weight,
 });
 
+const isDataUrl = (s: string) => typeof s === "string" && s.startsWith("data:");
+// keep light-weight storage URLs in cache, drop heavy base64 blobs
+const cacheImg = (s: string) => (!s || isDataUrl(s) ? "" : s);
 const cacheSafe = (list: Proforma[]) => list.map((p) => ({
   ...p,
   rowsLoaded: true,
-  rows: p.rows.map((r) => ({ ...r, image: "", packing: "" })),
+  rows: p.rows.map((r) => ({ ...r, image: cacheImg(r.image), packing: cacheImg(r.packing) })),
 }));
 
 const saveCache = (list: Proforma[]) => {
@@ -240,6 +243,47 @@ async function processImage(file: File): Promise<string> {
     };
     img.onerror = () => resolve(raw); img.src = raw;
   });
+}
+
+/* ───── image storage (files live in the bucket, DB only keeps the URL) ───── */
+const IMG_BUCKET = "proforma-images";
+
+async function dataUrlToBlob(dataUrl: string): Promise<Blob> {
+  const res = await fetch(dataUrl);
+  return res.blob();
+}
+
+async function uploadDataUrl(dataUrl: string): Promise<string> {
+  const blob = await dataUrlToBlob(dataUrl);
+  const type = blob.type || "image/jpeg";
+  const ext = type.includes("png") ? "png" : type.includes("webp") ? "webp" : "jpg";
+  const path = `${crypto.randomUUID()}.${ext}`;
+  const { error } = await supabase.storage.from(IMG_BUCKET).upload(path, blob, { contentType: type, upsert: false });
+  if (error) throw error;
+  return supabase.storage.from(IMG_BUCKET).getPublicUrl(path).data.publicUrl;
+}
+
+async function storeImage(file: File): Promise<string> {
+  const dataUrl = await processImage(file);
+  try { return await uploadDataUrl(dataUrl); } catch { return dataUrl; }
+}
+
+const dataUrlCache = new Map<string, string>();
+async function toDataUrl(src: string): Promise<string> {
+  if (!src || isDataUrl(src)) return src;
+  const hit = dataUrlCache.get(src);
+  if (hit) return hit;
+  try {
+    const blob = await (await fetch(src, { mode: "cors" })).blob();
+    const out = await new Promise<string>((res, rej) => {
+      const fr = new FileReader();
+      fr.onload = () => res(fr.result as string);
+      fr.onerror = rej;
+      fr.readAsDataURL(blob);
+    });
+    dataUrlCache.set(src, out);
+    return out;
+  } catch { return src; }
 }
 
 /* ───────────────────────────  COMPONENT  ─────────────────────────── */
