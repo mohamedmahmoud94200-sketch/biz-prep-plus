@@ -310,6 +310,53 @@ export default function ProformaApp() {
   const savingRef = useRef(false);
   const t = T[lang];
 
+  /* ----- images: batched hydration + one-time migration to storage ----- */
+  const hydrateImages = useCallback(async (itemIds: string[]) => {
+    const BATCH = 4;
+    for (let i = 0; i < itemIds.length; i += BATCH) {
+      const batch = itemIds.slice(i, i + BATCH);
+      const { data, error } = await supabase
+        .from("proforma_items")
+        .select("id, proforma_id, image, packing")
+        .in("id", batch);
+      if (error) { console.error(error); continue; }
+      const imagesById = new Map(((data ?? []) as ProformaItemImageRow[]).map((r) => [r.id, r]));
+      setProformas((ps) => {
+        const next = ps.map((p) => ({
+          ...p,
+          rows: p.rows.map((r) => {
+            const img = imagesById.get(r.id);
+            return img ? { ...r, image: img.image ?? "", packing: img.packing ?? "" } : r;
+          }),
+        }));
+        saveCache(next);
+        return next;
+      });
+
+      // Move any legacy base64 image out of the database into file storage.
+      for (const row of imagesById.values()) {
+        const patch: { image?: string; packing?: string } = {};
+        if (isDataUrl(row.image)) {
+          try { patch.image = await uploadDataUrl(row.image); } catch { /* keep as is */ }
+        }
+        if (isDataUrl(row.packing)) {
+          try { patch.packing = await uploadDataUrl(row.packing); } catch { /* keep as is */ }
+        }
+        if (Object.keys(patch).length === 0) continue;
+        const { error: upErr } = await supabase.from("proforma_items").update(patch).eq("id", row.id);
+        if (upErr) { console.error(upErr); continue; }
+        setProformas((ps) => {
+          const next = ps.map((p) => ({
+            ...p,
+            rows: p.rows.map((r) => (r.id === row.id ? { ...r, ...patch } : r)),
+          }));
+          saveCache(next);
+          return next;
+        });
+      }
+    }
+  }, []);
+
   /* ----- load ----- */
   const loadAll = useCallback(async () => {
     const { data: heads, error } = await supabase
@@ -368,7 +415,7 @@ export default function ProformaApp() {
     setLoadFailed(false);
     OLD_CACHE_KEYS.forEach((key) => { try { localStorage.removeItem(key); } catch {} });
     return true;
-  }, []);
+  }, [hydrateImages]);
 
   const readCachedList = useCallback(() => {
     try {
