@@ -6,9 +6,6 @@ import {
   Package, Printer, ImageIcon, Send, Save, Languages, LogOut, Star, FileText,
 } from "lucide-react";
 import { toast } from "sonner";
-import jsPDF from "jspdf";
-import PptxGenJS from "pptxgenjs";
-import html2canvas from "html2canvas-pro";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "@tanstack/react-router";
 
@@ -265,7 +262,7 @@ async function uploadDataUrl(dataUrl: string): Promise<string> {
 
 async function storeImage(file: File): Promise<string> {
   const dataUrl = await processImage(file);
-  try { return await uploadDataUrl(dataUrl); } catch { return dataUrl; }
+  return uploadDataUrl(dataUrl);
 }
 
 const dataUrlCache = new Map<string, string>();
@@ -310,53 +307,6 @@ export default function ProformaApp() {
   const savingRef = useRef(false);
   const t = T[lang];
 
-  /* ----- images: batched hydration + one-time migration to storage ----- */
-  const hydrateImages = useCallback(async (itemIds: string[]) => {
-    const BATCH = 4;
-    for (let i = 0; i < itemIds.length; i += BATCH) {
-      const batch = itemIds.slice(i, i + BATCH);
-      const { data, error } = await supabase
-        .from("proforma_items")
-        .select("id, proforma_id, image, packing")
-        .in("id", batch);
-      if (error) { console.error(error); continue; }
-      const imagesById = new Map(((data ?? []) as ProformaItemImageRow[]).map((r) => [r.id, r]));
-      setProformas((ps) => {
-        const next = ps.map((p) => ({
-          ...p,
-          rows: p.rows.map((r) => {
-            const img = imagesById.get(r.id);
-            return img ? { ...r, image: img.image ?? "", packing: img.packing ?? "" } : r;
-          }),
-        }));
-        saveCache(next);
-        return next;
-      });
-
-      // Move any legacy base64 image out of the database into file storage.
-      for (const row of imagesById.values()) {
-        const patch: { image?: string; packing?: string } = {};
-        if (isDataUrl(row.image)) {
-          try { patch.image = await uploadDataUrl(row.image); } catch { /* keep as is */ }
-        }
-        if (isDataUrl(row.packing)) {
-          try { patch.packing = await uploadDataUrl(row.packing); } catch { /* keep as is */ }
-        }
-        if (Object.keys(patch).length === 0) continue;
-        const { error: upErr } = await supabase.from("proforma_items").update(patch).eq("id", row.id);
-        if (upErr) { console.error(upErr); continue; }
-        setProformas((ps) => {
-          const next = ps.map((p) => ({
-            ...p,
-            rows: p.rows.map((r) => (r.id === row.id ? { ...r, ...patch } : r)),
-          }));
-          saveCache(next);
-          return next;
-        });
-      }
-    }
-  }, []);
-
   /* ----- load ----- */
   const loadAll = useCallback(async () => {
     const { data: heads, error } = await supabase
@@ -390,24 +340,19 @@ export default function ProformaApp() {
     if (ids.length > 0) {
       const { data: items, error: itemErr } = await supabase
         .from("proforma_items")
-        .select("id, proforma_id, row_order, item_name, description, ctn, doz_ctn, set_ctn, pcs_set, price_per_ctn, cbm, weight")
+        .select("id, proforma_id, row_order, item_name, description, image, packing, ctn, doz_ctn, set_ctn, pcs_set, price_per_ctn, cbm, weight")
         .in("proforma_id", ids)
         .order("row_order");
       if (itemErr) { console.error(itemErr); setLoadFailed(true); return false; }
 
       const rowsByProforma = new Map<string, Row[]>();
-      ((items ?? []) as ProformaItemLiteRow[]).forEach((item) => {
+      ((items ?? []) as (ProformaItemLiteRow & ProformaItemImageRow)[]).forEach((item) => {
         const proformaRows = rowsByProforma.get(item.proforma_id) ?? [];
-        const cachedRow = cacheMap.get(item.proforma_id)?.rows.find((r) => r.id === item.id);
-        proformaRows.push(itemToRow(item, cachedRow));
+        proformaRows.push(itemToRow(item, item));
         rowsByProforma.set(item.proforma_id, proformaRows);
       });
 
       list.forEach((p) => { p.rows = rowsByProforma.get(p.id) ?? [newRow()]; });
-
-      // Images are fetched in small batches so a single huge query can never time out.
-      const allItemIds = ((items ?? []) as ProformaItemLiteRow[]).map((i) => i.id);
-      void hydrateImages(allItemIds);
     }
 
     setProformas(list);
@@ -415,7 +360,7 @@ export default function ProformaApp() {
     setLoadFailed(false);
     OLD_CACHE_KEYS.forEach((key) => { try { localStorage.removeItem(key); } catch {} });
     return true;
-  }, [hydrateImages]);
+  }, []);
 
   const readCachedList = useCallback(() => {
     try {
@@ -689,9 +634,32 @@ export default function ProformaApp() {
   const onImage = async (id: string, f: File | null, field: "image" | "packing") => {
     if (!f) return;
     if (f.size > 10 * 1024 * 1024) return toast.error("الصورة كبيرة (>10MB)");
-    const url = await storeImage(f); updateRow(id, { [field]: url } as Partial<Row>);
+    try {
+      const url = await storeImage(f);
+      updateRow(id, { [field]: url } as Partial<Row>);
+      const imagePatch = field === "image" ? { image: url } : { packing: url };
+      const { error } = await supabase.from("proforma_items").update(imagePatch).eq("id", id);
+      if (error) throw error;
+    } catch (error) {
+      console.error(error);
+      toast.error(lang === "ar" ? "فشل رفع الصورة — حاول مرة أخرى" : "Image upload failed — try again");
+    }
   };
-  const onLogo = async (f: File | null) => { if (!f) return; const url = await storeImage(f); setMeta({ ...meta, logo: url }); };
+  const onLogo = async (f: File | null) => {
+    if (!f) return;
+    try {
+      const url = await storeImage(f);
+      setMeta({ ...meta, logo: url });
+      const targetId = activeId || active?.id;
+      if (targetId) {
+        const { error } = await supabase.from("proformas").update({ meta: { ...meta, logo: url } }).eq("id", targetId);
+        if (error) throw error;
+      }
+    } catch (error) {
+      console.error(error);
+      toast.error(lang === "ar" ? "فشل رفع الشعار — حاول مرة أخرى" : "Logo upload failed — try again");
+    }
+  };
 
   const fmtDate = (d: string) => { if (!d) return ""; const [y,m,da] = d.split("-"); return `${da}/${m}/${y}`; };
 
@@ -709,6 +677,10 @@ export default function ProformaApp() {
       await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(null))));
     }
     try {
+      const [{ default: html2canvas }, { default: jsPDF }] = await Promise.all([
+        import("html2canvas-pro"),
+        import("jspdf"),
+      ]);
       const canvas = await html2canvas(el, {
         scale: 2, useCORS: true, backgroundColor: "#ffffff", logging: false,
       });
@@ -755,6 +727,7 @@ export default function ProformaApp() {
   };
 
   const exportPPTX = async (invoiceOnly = false, transport = 0) => {
+    const { default: PptxGenJS } = await import("pptxgenjs");
     const pptx = new PptxGenJS(); pptx.layout = "LAYOUT_WIDE"; pptx.title = meta.title;
     // PowerPoint needs embedded image data, so resolve any stored URLs first.
     const srcList = [meta.logo, ...rows.flatMap((r) => [r.image, r.packing])].filter(Boolean);
@@ -818,7 +791,7 @@ export default function ProformaApp() {
       }
       const headerRow = head.map((h) => ({ text: h, options: { bold: true, color: "FFFFFF", fill: { color: ac }, align: "center", valign: "middle", fontSize: 9 } }));
       const slice = chunks[p];
-      const tr: PptxGenJS.TableRow[] = [headerRow as unknown as PptxGenJS.TableRow];
+      const tr: Parameters<typeof s.addTable>[0] = [headerRow as Parameters<typeof s.addTable>[0][number]];
       slice.forEach((r, idx) => {
         const gi = runningIndex + idx + 1;
         const fullRow = [
@@ -833,7 +806,7 @@ export default function ProformaApp() {
           { text: r.cbm, options: { align: "center", bold: true } }, { text: String(tCbm(r) || ""), options: { align: "center", bold: true } },
           { text: r.weight, options: { align: "center", bold: true } }, { text: String(tWeight(r) || ""), options: { align: "center", bold: true } },
         ];
-        tr.push((invoiceOnly ? fullRow.slice(0, 11) : fullRow) as unknown as PptxGenJS.TableRow);
+        tr.push((invoiceOnly ? fullRow.slice(0, 11) : fullRow) as Parameters<typeof s.addTable>[0][number]);
       });
       const rowH = 0.75;
       s.addTable(tr, { x: 0.3, y: tY, w: 12.73, rowH, fontSize: 8.5, border: { type: "solid", pt: 0.5, color: "E5E7EB" }, valign: "middle", colW });
