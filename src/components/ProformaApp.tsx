@@ -358,25 +358,9 @@ export default function ProformaApp() {
 
       list.forEach((p) => { p.rows = rowsByProforma.get(p.id) ?? [newRow()]; });
 
-      void supabase
-        .from("proforma_items")
-        .select("id, proforma_id, image, packing")
-        .in("proforma_id", ids)
-        .then(({ data: imageRows, error: imageErr }) => {
-          if (imageErr) { console.error(imageErr); return; }
-          setProformas((ps) => {
-            const imagesById = new Map((imageRows ?? []).map((r) => [r.id, r as ProformaItemImageRow]));
-            const next = ps.map((p) => ({
-              ...p,
-              rows: p.rows.map((r) => {
-                const images = imagesById.get(r.id);
-                return images ? { ...r, image: images.image ?? "", packing: images.packing ?? "" } : r;
-              }),
-            }));
-            saveCache(next);
-            return next;
-          });
-        });
+      // Images are fetched in small batches so a single huge query can never time out.
+      const allItemIds = ((items ?? []) as ProformaItemLiteRow[]).map((i) => i.id);
+      void hydrateImages(allItemIds);
     }
 
     setProformas(list);
