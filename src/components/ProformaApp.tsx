@@ -689,9 +689,9 @@ export default function ProformaApp() {
   const onImage = async (id: string, f: File | null, field: "image" | "packing") => {
     if (!f) return;
     if (f.size > 10 * 1024 * 1024) return toast.error("الصورة كبيرة (>10MB)");
-    const url = await processImage(f); updateRow(id, { [field]: url } as Partial<Row>);
+    const url = await storeImage(f); updateRow(id, { [field]: url } as Partial<Row>);
   };
-  const onLogo = async (f: File | null) => { if (!f) return; const url = await processImage(f); setMeta({ ...meta, logo: url }); };
+  const onLogo = async (f: File | null) => { if (!f) return; const url = await storeImage(f); setMeta({ ...meta, logo: url }); };
 
   const fmtDate = (d: string) => { if (!d) return ""; const [y,m,da] = d.split("-"); return `${da}/${m}/${y}`; };
 
