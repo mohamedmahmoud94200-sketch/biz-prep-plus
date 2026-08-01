@@ -6,9 +6,6 @@ import {
   Package, Printer, ImageIcon, Send, Save, Languages, LogOut, Star, FileText,
 } from "lucide-react";
 import { toast } from "sonner";
-import jsPDF from "jspdf";
-import PptxGenJS from "pptxgenjs";
-import html2canvas from "html2canvas-pro";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "@tanstack/react-router";
 
@@ -672,6 +669,10 @@ export default function ProformaApp() {
       await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(null))));
     }
     try {
+      const [{ default: html2canvas }, { default: jsPDF }] = await Promise.all([
+        import("html2canvas-pro"),
+        import("jspdf"),
+      ]);
       const canvas = await html2canvas(el, {
         scale: 2, useCORS: true, backgroundColor: "#ffffff", logging: false,
       });
@@ -718,6 +719,7 @@ export default function ProformaApp() {
   };
 
   const exportPPTX = async (invoiceOnly = false, transport = 0) => {
+    const { default: PptxGenJS } = await import("pptxgenjs");
     const pptx = new PptxGenJS(); pptx.layout = "LAYOUT_WIDE"; pptx.title = meta.title;
     // PowerPoint needs embedded image data, so resolve any stored URLs first.
     const srcList = [meta.logo, ...rows.flatMap((r) => [r.image, r.packing])].filter(Boolean);
@@ -781,7 +783,7 @@ export default function ProformaApp() {
       }
       const headerRow = head.map((h) => ({ text: h, options: { bold: true, color: "FFFFFF", fill: { color: ac }, align: "center", valign: "middle", fontSize: 9 } }));
       const slice = chunks[p];
-      const tr: PptxGenJS.TableRow[] = [headerRow as unknown as PptxGenJS.TableRow];
+      const tr: Parameters<typeof s.addTable>[0] = [headerRow as Parameters<typeof s.addTable>[0][number]];
       slice.forEach((r, idx) => {
         const gi = runningIndex + idx + 1;
         const fullRow = [
@@ -796,7 +798,7 @@ export default function ProformaApp() {
           { text: r.cbm, options: { align: "center", bold: true } }, { text: String(tCbm(r) || ""), options: { align: "center", bold: true } },
           { text: r.weight, options: { align: "center", bold: true } }, { text: String(tWeight(r) || ""), options: { align: "center", bold: true } },
         ];
-        tr.push((invoiceOnly ? fullRow.slice(0, 11) : fullRow) as unknown as PptxGenJS.TableRow);
+        tr.push((invoiceOnly ? fullRow.slice(0, 11) : fullRow) as Parameters<typeof s.addTable>[0][number]);
       });
       const rowH = 0.75;
       s.addTable(tr, { x: 0.3, y: tY, w: 12.73, rowH, fontSize: 8.5, border: { type: "solid", pt: 0.5, color: "E5E7EB" }, valign: "middle", colW });
