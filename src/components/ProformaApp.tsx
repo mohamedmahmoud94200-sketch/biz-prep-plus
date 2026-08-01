@@ -265,7 +265,7 @@ async function uploadDataUrl(dataUrl: string): Promise<string> {
 
 async function storeImage(file: File): Promise<string> {
   const dataUrl = await processImage(file);
-  try { return await uploadDataUrl(dataUrl); } catch { return dataUrl; }
+  return uploadDataUrl(dataUrl);
 }
 
 const dataUrlCache = new Map<string, string>();
@@ -637,9 +637,24 @@ export default function ProformaApp() {
   const onImage = async (id: string, f: File | null, field: "image" | "packing") => {
     if (!f) return;
     if (f.size > 10 * 1024 * 1024) return toast.error("الصورة كبيرة (>10MB)");
-    const url = await storeImage(f); updateRow(id, { [field]: url } as Partial<Row>);
+    try {
+      const url = await storeImage(f);
+      updateRow(id, { [field]: url } as Partial<Row>);
+    } catch (error) {
+      console.error(error);
+      toast.error(lang === "ar" ? "فشل رفع الصورة — حاول مرة أخرى" : "Image upload failed — try again");
+    }
   };
-  const onLogo = async (f: File | null) => { if (!f) return; const url = await storeImage(f); setMeta({ ...meta, logo: url }); };
+  const onLogo = async (f: File | null) => {
+    if (!f) return;
+    try {
+      const url = await storeImage(f);
+      setMeta({ ...meta, logo: url });
+    } catch (error) {
+      console.error(error);
+      toast.error(lang === "ar" ? "فشل رفع الشعار — حاول مرة أخرى" : "Logo upload failed — try again");
+    }
+  };
 
   const fmtDate = (d: string) => { if (!d) return ""; const [y,m,da] = d.split("-"); return `${da}/${m}/${y}`; };
 
