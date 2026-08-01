@@ -756,6 +756,11 @@ export default function ProformaApp() {
 
   const exportPPTX = async (invoiceOnly = false, transport = 0) => {
     const pptx = new PptxGenJS(); pptx.layout = "LAYOUT_WIDE"; pptx.title = meta.title;
+    // PowerPoint needs embedded image data, so resolve any stored URLs first.
+    const srcList = [meta.logo, ...rows.flatMap((r) => [r.image, r.packing])].filter(Boolean);
+    const resolved = new Map<string, string>();
+    for (const src of Array.from(new Set(srcList))) resolved.set(src, await toDataUrl(src));
+    const imgData = (src: string) => resolved.get(src) ?? src;
     const ac = themeColor;
     const perSlideFirst = 5; // header takes vertical space
     const perSlideMid = 7;
@@ -797,7 +802,7 @@ export default function ProformaApp() {
         // Full header banner
         s.addShape("roundRect", { x: 0.3, y: 0.25, w: 12.73, h: 1.2, fill: { color: ac }, line: { color: ac }, rectRadius: 0.08 });
         s.addShape("roundRect", { x: 0.45, y: 0.4, w: 0.9, h: 0.9, fill: { color: "FFFFFF" }, line: { color: "FFFFFF" }, rectRadius: 0.05 });
-        if (meta.logo) { try { s.addImage({ data: meta.logo, x: 0.5, y: 0.45, w: 0.8, h: 0.8 }); } catch {} }
+        if (meta.logo) { try { s.addImage({ data: imgData(meta.logo), x: 0.5, y: 0.45, w: 0.8, h: 0.8 }); } catch {} }
         s.addText("proforma", { x: 8, y: 0.55, w: 4.6, h: 0.8, fontSize: 40, bold: true, color: "FFFFFF", align: "right" });
         s.addText("CUSTOMER", { x: 0.4, y: 1.55, w: 3, h: 0.2, fontSize: 8, color: "888888" });
         s.addText("DATE", { x: 9.6, y: 1.55, w: 3, h: 0.2, fontSize: 8, color: "888888", align: "right" });
@@ -837,7 +842,7 @@ export default function ProformaApp() {
         const cw = colW[oc]; const y = tY + rowH + ri*rowH + 0.04; const size = rowH - 0.12;
         const cx = x + (cw-size)/2;
         try {
-          s.addImage({ data: src, x: cx, y, w: size, h: size, sizing: { type: "contain", w: size, h: size } });
+          s.addImage({ data: imgData(src), x: cx, y, w: size, h: size, sizing: { type: "contain", w: size, h: size } });
         } catch {}
       };
       slice.forEach((r, idx) => { overlay(3, r.image, idx); overlay(4, r.packing, idx); });
