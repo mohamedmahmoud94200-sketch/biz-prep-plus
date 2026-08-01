@@ -6,6 +6,10 @@ export const Route = createFileRoute("/_authenticated/")({
     meta: [
       { title: "Proforma Invoice Generator" },
       { name: "description", content: "إنشاء بروفورما احترافية وتصدير PDF أو PowerPoint." },
+      { property: "og:title", content: "Proforma Invoice Generator" },
+      { property: "og:description", content: "إنشاء بروفورما احترافية وتصدير PDF أو PowerPoint." },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary" },
     ],
   }),
   component: () => <ProformaApp />,

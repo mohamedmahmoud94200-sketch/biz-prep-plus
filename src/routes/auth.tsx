@@ -6,6 +6,16 @@ import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/auth")({
+  head: () => ({
+    meta: [
+      { title: "Sign in | Proforma Admin" },
+      { name: "description", content: "Sign in to create, manage, and export your professional proforma invoices." },
+      { property: "og:title", content: "Sign in | Proforma Admin" },
+      { property: "og:description", content: "Sign in to create, manage, and export your professional proforma invoices." },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary" },
+    ],
+  }),
   component: AuthPage,
 });
 
