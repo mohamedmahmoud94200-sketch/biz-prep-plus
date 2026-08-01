@@ -637,7 +637,8 @@ export default function ProformaApp() {
     try {
       const url = await storeImage(f);
       updateRow(id, { [field]: url } as Partial<Row>);
-      const { error } = await supabase.from("proforma_items").update({ [field]: url }).eq("id", id);
+      const imagePatch = field === "image" ? { image: url } : { packing: url };
+      const { error } = await supabase.from("proforma_items").update(imagePatch).eq("id", id);
       if (error) throw error;
     } catch (error) {
       console.error(error);
