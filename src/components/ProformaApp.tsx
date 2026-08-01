@@ -960,7 +960,7 @@ export default function ProformaApp() {
           {/* Banner */}
           <div className="relative flex items-center justify-between px-6 py-5" style={{ background: accent }}>
             <button type="button" onClick={() => logoRef.current?.click()} className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-md bg-white text-[10px] font-bold uppercase leading-tight shadow" style={{ color: accent }} title="Upload logo">
-              {meta.logo ? <img src={meta.logo} alt="logo" className="h-full w-full object-contain p-1" /> : <span className="px-1 text-center">{meta.company.split(" ").slice(0,2).join(" ")}</span>}
+              {meta.logo ? <img src={meta.logo} crossOrigin="anonymous" alt="logo" className="h-full w-full object-contain p-1" /> : <span className="px-1 text-center">{meta.company.split(" ").slice(0,2).join(" ")}</span>}
             </button>
             <input ref={logoRef} type="file" accept="image/*" className="hidden" onChange={(e) => onLogo(e.target.files?.[0] ?? null)} />
             <h2 className="text-5xl font-extrabold lowercase tracking-tight text-white">{t.proforma}</h2>
@@ -1158,7 +1158,7 @@ function ImgCell({ src, onPick, icon }: { src: string; onPick: (f: File | null) 
   return (
     <>
       <button type="button" onClick={() => ref.current?.click()} className={`img-cell-btn mx-auto flex h-14 w-14 items-center justify-center overflow-hidden rounded border ${src ? "" : "border-dashed bg-muted/30"} hover:border-foreground`}>
-        {src ? <img src={src} alt="" className="h-full w-full object-contain" /> : icon === "img" ? <ImageIcon className="h-4 w-4 text-muted-foreground" /> : <Package className="h-4 w-4 text-muted-foreground" />}
+        {src ? <img src={src} crossOrigin="anonymous" alt="" className="h-full w-full object-contain" /> : icon === "img" ? <ImageIcon className="h-4 w-4 text-muted-foreground" /> : <Package className="h-4 w-4 text-muted-foreground" />}
       </button>
       <input ref={ref} type="file" accept="image/*" className="hidden" onChange={(e) => onPick(e.target.files?.[0] ?? null)} />
     </>
