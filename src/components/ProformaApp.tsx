@@ -310,53 +310,6 @@ export default function ProformaApp() {
   const savingRef = useRef(false);
   const t = T[lang];
 
-  /* ----- images: batched hydration + one-time migration to storage ----- */
-  const hydrateImages = useCallback(async (itemIds: string[]) => {
-    const BATCH = 4;
-    for (let i = 0; i < itemIds.length; i += BATCH) {
-      const batch = itemIds.slice(i, i + BATCH);
-      const { data, error } = await supabase
-        .from("proforma_items")
-        .select("id, proforma_id, image, packing")
-        .in("id", batch);
-      if (error) { console.error(error); continue; }
-      const imagesById = new Map(((data ?? []) as ProformaItemImageRow[]).map((r) => [r.id, r]));
-      setProformas((ps) => {
-        const next = ps.map((p) => ({
-          ...p,
-          rows: p.rows.map((r) => {
-            const img = imagesById.get(r.id);
-            return img ? { ...r, image: img.image ?? "", packing: img.packing ?? "" } : r;
-          }),
-        }));
-        saveCache(next);
-        return next;
-      });
-
-      // Move any legacy base64 image out of the database into file storage.
-      for (const row of imagesById.values()) {
-        const patch: { image?: string; packing?: string } = {};
-        if (isDataUrl(row.image)) {
-          try { patch.image = await uploadDataUrl(row.image); } catch { /* keep as is */ }
-        }
-        if (isDataUrl(row.packing)) {
-          try { patch.packing = await uploadDataUrl(row.packing); } catch { /* keep as is */ }
-        }
-        if (Object.keys(patch).length === 0) continue;
-        const { error: upErr } = await supabase.from("proforma_items").update(patch).eq("id", row.id);
-        if (upErr) { console.error(upErr); continue; }
-        setProformas((ps) => {
-          const next = ps.map((p) => ({
-            ...p,
-            rows: p.rows.map((r) => (r.id === row.id ? { ...r, ...patch } : r)),
-          }));
-          saveCache(next);
-          return next;
-        });
-      }
-    }
-  }, []);
-
   /* ----- load ----- */
   const loadAll = useCallback(async () => {
     const { data: heads, error } = await supabase
@@ -390,24 +343,19 @@ export default function ProformaApp() {
     if (ids.length > 0) {
       const { data: items, error: itemErr } = await supabase
         .from("proforma_items")
-        .select("id, proforma_id, row_order, item_name, description, ctn, doz_ctn, set_ctn, pcs_set, price_per_ctn, cbm, weight")
+        .select("id, proforma_id, row_order, item_name, description, image, packing, ctn, doz_ctn, set_ctn, pcs_set, price_per_ctn, cbm, weight")
         .in("proforma_id", ids)
         .order("row_order");
       if (itemErr) { console.error(itemErr); setLoadFailed(true); return false; }
 
       const rowsByProforma = new Map<string, Row[]>();
-      ((items ?? []) as ProformaItemLiteRow[]).forEach((item) => {
+      ((items ?? []) as (ProformaItemLiteRow & ProformaItemImageRow)[]).forEach((item) => {
         const proformaRows = rowsByProforma.get(item.proforma_id) ?? [];
-        const cachedRow = cacheMap.get(item.proforma_id)?.rows.find((r) => r.id === item.id);
-        proformaRows.push(itemToRow(item, cachedRow));
+        proformaRows.push(itemToRow(item, item));
         rowsByProforma.set(item.proforma_id, proformaRows);
       });
 
       list.forEach((p) => { p.rows = rowsByProforma.get(p.id) ?? [newRow()]; });
-
-      // Images are fetched in small batches so a single huge query can never time out.
-      const allItemIds = ((items ?? []) as ProformaItemLiteRow[]).map((i) => i.id);
-      void hydrateImages(allItemIds);
     }
 
     setProformas(list);
@@ -415,7 +363,7 @@ export default function ProformaApp() {
     setLoadFailed(false);
     OLD_CACHE_KEYS.forEach((key) => { try { localStorage.removeItem(key); } catch {} });
     return true;
-  }, [hydrateImages]);
+  }, []);
 
   const readCachedList = useCallback(() => {
     try {
