@@ -735,10 +735,10 @@ export default function ProformaApp() {
     for (const src of Array.from(new Set(srcList))) resolved.set(src, await toDataUrl(src));
     const imgData = (src: string) => resolved.get(src) ?? src;
     const ac = themeColor;
-    const firstCap = 6; // slimmer header leaves room for one more row
-    const midCap = 7;
-    const firstLastCap = 4; // single slide: totals + footer take space
-    const midLastCap = 4;
+    const firstCap = 8; // slimmer header + adaptive row height fit more rows
+    const midCap = 9;
+    const firstLastCap = 7; // single slide: totals + footer take space
+    const midLastCap = 8;
     // Distribute rows across slides (balanced, never leaves a near-empty slide)
     const chunks: Row[][] = [];
     const remaining = [...rows];
