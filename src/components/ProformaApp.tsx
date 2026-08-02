@@ -827,7 +827,6 @@ export default function ProformaApp() {
         const ch0 = 0.9, footerTop = 6.75;
         const cardsTop = Math.min(tY + rowH * (slice.length + 1) + 0.5, footerTop - 0.2 - ch0);
         const cY = cardsTop - 0.25;
-        s.addText(`• ${meta.notes}`, { x: 0.3, y: cY-0.3, w: 12.73, h: 0.28, fontSize: 11, bold: true, color: "222222", align: "right" });
         const invTotal = +(totals.tAmount + (transport || 0)).toFixed(2);
         const cards = invoiceOnly ? [
           { l: "T.Ctn", v: String(totals.tCtn) },
@@ -839,6 +838,9 @@ export default function ProformaApp() {
           { l: "T.Weight", v: totals.tWt.toFixed(2) }, { l: "T.Amount", v: String(totals.tAmount) },
         ];
         const cw = 2.0, ch = ch0, gap = 0.15; let cx = 13.03 - (cw*cards.length + gap*(cards.length - 1));
+        // Note sits beside the totals cards (never overlapping the footer band)
+        const noteW = Math.max(2.2, cx - 0.3 - 0.2);
+        s.addText(`• ${meta.notes}`, { x: 0.3, y: cY + 0.25, w: noteW, h: ch, fontSize: 12, bold: true, color: "222222", align: "left", valign: "middle" });
         cards.forEach((c) => {
           s.addShape("roundRect", { x: cx, y: cY+0.25, w: cw, h: ch, fill: { color: "FFFFFF" }, line: { color: ac, width: 1 }, rectRadius: 0.05 });
           s.addShape("rect", { x: cx+0.02, y: cY+0.27, w: cw-0.04, h: 0.28, fill: { color: ac }, line: { color: ac } });
