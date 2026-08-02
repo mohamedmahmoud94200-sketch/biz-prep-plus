@@ -1297,10 +1297,19 @@ function InvoiceModal({ accent, lang, onCancel, onPdf, onPptx }:
 function CompanyModal({ meta, accent, lang, onSave, onCancel }:
   { meta: Meta; accent: string; lang: Lang; onSave: (m: Meta) => void; onCancel: () => void; }) {
   const [m, setM] = useState<Meta>(meta);
+  const fileRef = useRef<HTMLInputElement>(null);
   const isAr = lang === "ar";
   const L = isAr
-    ? { title: "بيانات الشركة", company: "اسم الشركة", address: "العنوان", phone: "الهاتف", email: "الإيميل", notes: "ملاحظة الفاتورة", invoiceTitle: "عنوان الفاتورة", save: "حفظ", cancel: "إلغاء" }
-    : { title: "Company Info", company: "Company", address: "Address", phone: "Phone", email: "Email", notes: "Invoice Note", invoiceTitle: "Invoice Title", save: "Save", cancel: "Cancel" };
+    ? { title: "بيانات الشركة", company: "اسم الشركة", address: "العنوان", phone: "الهاتف", email: "الإيميل", notes: "ملاحظة الفاتورة", invoiceTitle: "عنوان الفاتورة", save: "حفظ", cancel: "إلغاء", logo: "اللوجو (يتحط تلقائيًا في أي بروفورما جديدة)", upload: "ارفع اللوجو", remove: "حذف" }
+    : { title: "Company Info", company: "Company", address: "Address", phone: "Phone", email: "Email", notes: "Invoice Note", invoiceTitle: "Invoice Title", save: "Save", cancel: "Cancel", logo: "Logo (auto-applied to every new proforma)", upload: "Upload logo", remove: "Remove" };
+  const pickLogo = async (f: File | null) => {
+    if (!f) return;
+    try {
+      const url = await storeImage(f);
+      setDefaultLogo(url);
+      setM((prev) => ({ ...prev, logo: url }));
+    } catch (e) { console.error(e); toast.error(isAr ? "فشل رفع الشعار" : "Logo upload failed"); }
+  };
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onCancel}>
       <div className="w-full max-w-lg overflow-hidden rounded-lg bg-white shadow-2xl" onClick={(e) => e.stopPropagation()} dir={isAr ? "rtl" : "ltr"}>
@@ -1309,6 +1318,17 @@ function CompanyModal({ meta, accent, lang, onSave, onCancel }:
           <button onClick={onCancel} className="text-muted-foreground hover:text-foreground"><X className="h-5 w-5" /></button>
         </div>
         <div className="space-y-3 p-5">
+          <div>
+            <label className="text-xs font-medium text-muted-foreground">{L.logo}</label>
+            <div className="mt-1 flex items-center gap-3">
+              <div className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-md border bg-white">
+                {m.logo ? <img src={m.logo} alt="logo" className="h-full w-full object-contain p-1" /> : <span className="text-[10px] text-muted-foreground">LOGO</span>}
+              </div>
+              <Button type="button" variant="outline" size="sm" onClick={() => fileRef.current?.click()}>{L.upload}</Button>
+              {m.logo && <Button type="button" variant="ghost" size="sm" onClick={() => { setDefaultLogo(""); setM((p) => ({ ...p, logo: "" })); }}>{L.remove}</Button>}
+              <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={(e) => pickLogo(e.target.files?.[0] ?? null)} />
+            </div>
+          </div>
           {([
             ["company", L.company], ["address", L.address], ["phone", L.phone],
             ["email", L.email], ["title", L.invoiceTitle], ["notes", L.notes],
