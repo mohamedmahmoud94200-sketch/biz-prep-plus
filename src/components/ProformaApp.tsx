@@ -735,28 +735,26 @@ export default function ProformaApp() {
     for (const src of Array.from(new Set(srcList))) resolved.set(src, await toDataUrl(src));
     const imgData = (src: string) => resolved.get(src) ?? src;
     const ac = themeColor;
-    const perSlideFirst = 5; // header takes vertical space
-    const perSlideMid = 7;
-    const perSlideLast = 4; // totals + footer take space
-    // Distribute rows across slides
+    const firstCap = 6; // slimmer header leaves room for one more row
+    const midCap = 7;
+    const firstLastCap = 4; // single slide: totals + footer take space
+    const midLastCap = 4;
+    // Distribute rows across slides (balanced, never leaves a near-empty slide)
     const chunks: Row[][] = [];
-    let remaining = [...rows];
+    const remaining = [...rows];
     if (remaining.length === 0) chunks.push([]);
     while (remaining.length > 0) {
       const isFirst = chunks.length === 0;
-      // Tentative size; we'll re-balance last slice for last-slide footer
-      const take = isFirst ? perSlideFirst : perSlideMid;
-      chunks.push(remaining.splice(0, take));
-    }
-    // If the last chunk is too big to also host the footer, split it
-    const lastMax = chunks.length === 1 ? 3 : perSlideLast;
-    if (chunks.length > 0 && chunks[chunks.length - 1].length > lastMax) {
-      const last = chunks[chunks.length - 1];
-      const splitAt = Math.max(1, last.length - lastMax);
-      const head = last.slice(0, splitAt);
-      const tail = last.slice(splitAt);
-      chunks[chunks.length - 1] = head;
-      if (tail.length) chunks.push(tail);
+      const cap = isFirst ? firstCap : midCap;
+      const lastCap = isFirst ? firstLastCap : midLastCap;
+      if (remaining.length <= lastCap) { chunks.push(remaining.splice(0)); break; }
+      if (remaining.length <= cap) {
+        // Needs a second slide for the totals/footer — split evenly instead of 1 + rest
+        const half = Math.min(cap, Math.ceil(remaining.length / 2));
+        chunks.push(remaining.splice(0, half));
+        continue;
+      }
+      chunks.push(remaining.splice(0, cap));
     }
     const pages = chunks.length;
     // Column widths must sum to table width (12.73)
@@ -773,15 +771,15 @@ export default function ProformaApp() {
       let tY: number;
       if (isFirst) {
         // Full header banner
-        s.addShape("roundRect", { x: 0.3, y: 0.25, w: 12.73, h: 1.2, fill: { color: ac }, line: { color: ac }, rectRadius: 0.08 });
-        s.addShape("roundRect", { x: 0.45, y: 0.4, w: 0.9, h: 0.9, fill: { color: "FFFFFF" }, line: { color: "FFFFFF" }, rectRadius: 0.05 });
-        if (meta.logo) { try { s.addImage({ data: imgData(meta.logo), x: 0.5, y: 0.45, w: 0.8, h: 0.8 }); } catch {} }
-        s.addText("proforma", { x: 8, y: 0.55, w: 4.6, h: 0.8, fontSize: 40, bold: true, color: "FFFFFF", align: "right" });
-        s.addText("CUSTOMER", { x: 0.4, y: 1.55, w: 3, h: 0.2, fontSize: 8, color: "888888" });
-        s.addText("DATE", { x: 9.6, y: 1.55, w: 3, h: 0.2, fontSize: 8, color: "888888", align: "right" });
-        s.addText(meta.customer || "—", { x: 0.4, y: 1.72, w: 6, h: 0.3, fontSize: 14, bold: true, color: "222222" });
-        s.addText(fmtDate(meta.date), { x: 7, y: 1.72, w: 5.6, h: 0.3, fontSize: 14, bold: true, color: "222222", align: "right" });
-        tY = 2.25;
+        s.addShape("roundRect", { x: 0.3, y: 0.2, w: 12.73, h: 0.9, fill: { color: ac }, line: { color: ac }, rectRadius: 0.08 });
+        s.addShape("roundRect", { x: 0.42, y: 0.29, w: 0.72, h: 0.72, fill: { color: "FFFFFF" }, line: { color: "FFFFFF" }, rectRadius: 0.05 });
+        if (meta.logo) { try { s.addImage({ data: imgData(meta.logo), x: 0.46, y: 0.33, w: 0.64, h: 0.64 }); } catch {} }
+        s.addText("proforma", { x: 8, y: 0.32, w: 4.6, h: 0.66, fontSize: 32, bold: true, color: "FFFFFF", align: "right", valign: "middle" });
+        s.addText("CUSTOMER", { x: 0.4, y: 1.18, w: 3, h: 0.18, fontSize: 8, color: "888888" });
+        s.addText("DATE", { x: 9.6, y: 1.18, w: 3, h: 0.18, fontSize: 8, color: "888888", align: "right" });
+        s.addText(meta.customer || "—", { x: 0.4, y: 1.34, w: 6, h: 0.3, fontSize: 14, bold: true, color: "222222" });
+        s.addText(fmtDate(meta.date), { x: 7, y: 1.34, w: 5.6, h: 0.3, fontSize: 14, bold: true, color: "222222", align: "right" });
+        tY = 1.78;
       } else {
         // Minimal slim header for continuation
         s.addShape("rect", { x: 0.3, y: 0.25, w: 12.73, h: 0.5, fill: { color: ac }, line: { color: ac } });
