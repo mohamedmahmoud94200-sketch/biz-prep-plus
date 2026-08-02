@@ -64,13 +64,16 @@ const newRow = (): Row => ({
   id: crypto.randomUUID(), itemName: "", description: "", image: "", packing: "",
   ctn: "", dozCtn: "", setCtn: "", pcsSet: "", pricePerCtn: "", cbm: "", weight: "",
 });
+const DEFAULT_LOGO_KEY = "proforma_default_logo";
+const getDefaultLogo = () => { try { return localStorage.getItem(DEFAULT_LOGO_KEY) || ""; } catch { return ""; } };
+const setDefaultLogo = (url: string) => { try { localStorage.setItem(DEFAULT_LOGO_KEY, url); } catch { /* ignore */ } };
 const defaultMeta = (): Meta => ({
   company: "KOUJAN COMPANY",
   address: "ARABIC REPUBLIC EGYPT , sadat city svi industrial zone , plot no 6098",
   phone: "00201272883314  -  002012​1265982",
   email: "sales@koujanegypt.com  /  info@koujanegypt.com",
   customer: "", date: new Date().toISOString().slice(0,10),
-  title: "Proforma Invoice", notes: "Prices are E.X work", logo: "",
+  title: "Proforma Invoice", notes: "Prices are E.X work", logo: getDefaultLogo(),
 });
 const THEME_PRESETS = [
   { name:"Emerald", color:"2BB39B" }, { name:"Navy", color:"1E3A8A" },
@@ -824,7 +827,6 @@ export default function ProformaApp() {
         const ch0 = 0.9, footerTop = 6.75;
         const cardsTop = Math.min(tY + rowH * (slice.length + 1) + 0.5, footerTop - 0.2 - ch0);
         const cY = cardsTop - 0.25;
-        s.addText(`• ${meta.notes}`, { x: 0.3, y: cY-0.3, w: 12.73, h: 0.28, fontSize: 11, bold: true, color: "222222", align: "right" });
         const invTotal = +(totals.tAmount + (transport || 0)).toFixed(2);
         const cards = invoiceOnly ? [
           { l: "T.Ctn", v: String(totals.tCtn) },
@@ -836,6 +838,9 @@ export default function ProformaApp() {
           { l: "T.Weight", v: totals.tWt.toFixed(2) }, { l: "T.Amount", v: String(totals.tAmount) },
         ];
         const cw = 2.0, ch = ch0, gap = 0.15; let cx = 13.03 - (cw*cards.length + gap*(cards.length - 1));
+        // Note sits beside the totals cards (never overlapping the footer band)
+        const noteW = Math.max(2.2, cx - 0.3 - 0.2);
+        s.addText(`• ${meta.notes}`, { x: 0.3, y: cY + 0.25, w: noteW, h: ch, fontSize: 12, bold: true, color: "222222", align: "left", valign: "middle" });
         cards.forEach((c) => {
           s.addShape("roundRect", { x: cx, y: cY+0.25, w: cw, h: ch, fill: { color: "FFFFFF" }, line: { color: ac, width: 1 }, rectRadius: 0.05 });
           s.addShape("rect", { x: cx+0.02, y: cY+0.27, w: cw-0.04, h: 0.28, fill: { color: ac }, line: { color: ac } });
@@ -1292,10 +1297,19 @@ function InvoiceModal({ accent, lang, onCancel, onPdf, onPptx }:
 function CompanyModal({ meta, accent, lang, onSave, onCancel }:
   { meta: Meta; accent: string; lang: Lang; onSave: (m: Meta) => void; onCancel: () => void; }) {
   const [m, setM] = useState<Meta>(meta);
+  const fileRef = useRef<HTMLInputElement>(null);
   const isAr = lang === "ar";
   const L = isAr
-    ? { title: "بيانات الشركة", company: "اسم الشركة", address: "العنوان", phone: "الهاتف", email: "الإيميل", notes: "ملاحظة الفاتورة", invoiceTitle: "عنوان الفاتورة", save: "حفظ", cancel: "إلغاء" }
-    : { title: "Company Info", company: "Company", address: "Address", phone: "Phone", email: "Email", notes: "Invoice Note", invoiceTitle: "Invoice Title", save: "Save", cancel: "Cancel" };
+    ? { title: "بيانات الشركة", company: "اسم الشركة", address: "العنوان", phone: "الهاتف", email: "الإيميل", notes: "ملاحظة الفاتورة", invoiceTitle: "عنوان الفاتورة", save: "حفظ", cancel: "إلغاء", logo: "اللوجو (يتحط تلقائيًا في أي بروفورما جديدة)", upload: "ارفع اللوجو", remove: "حذف" }
+    : { title: "Company Info", company: "Company", address: "Address", phone: "Phone", email: "Email", notes: "Invoice Note", invoiceTitle: "Invoice Title", save: "Save", cancel: "Cancel", logo: "Logo (auto-applied to every new proforma)", upload: "Upload logo", remove: "Remove" };
+  const pickLogo = async (f: File | null) => {
+    if (!f) return;
+    try {
+      const url = await storeImage(f);
+      setDefaultLogo(url);
+      setM((prev) => ({ ...prev, logo: url }));
+    } catch (e) { console.error(e); toast.error(isAr ? "فشل رفع الشعار" : "Logo upload failed"); }
+  };
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onCancel}>
       <div className="w-full max-w-lg overflow-hidden rounded-lg bg-white shadow-2xl" onClick={(e) => e.stopPropagation()} dir={isAr ? "rtl" : "ltr"}>
@@ -1304,6 +1318,17 @@ function CompanyModal({ meta, accent, lang, onSave, onCancel }:
           <button onClick={onCancel} className="text-muted-foreground hover:text-foreground"><X className="h-5 w-5" /></button>
         </div>
         <div className="space-y-3 p-5">
+          <div>
+            <label className="text-xs font-medium text-muted-foreground">{L.logo}</label>
+            <div className="mt-1 flex items-center gap-3">
+              <div className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-md border bg-white">
+                {m.logo ? <img src={m.logo} alt="logo" className="h-full w-full object-contain p-1" /> : <span className="text-[10px] text-muted-foreground">LOGO</span>}
+              </div>
+              <Button type="button" variant="outline" size="sm" onClick={() => fileRef.current?.click()}>{L.upload}</Button>
+              {m.logo && <Button type="button" variant="ghost" size="sm" onClick={() => { setDefaultLogo(""); setM((p) => ({ ...p, logo: "" })); }}>{L.remove}</Button>}
+              <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={(e) => pickLogo(e.target.files?.[0] ?? null)} />
+            </div>
+          </div>
           {([
             ["company", L.company], ["address", L.address], ["phone", L.phone],
             ["email", L.email], ["title", L.invoiceTitle], ["notes", L.notes],
