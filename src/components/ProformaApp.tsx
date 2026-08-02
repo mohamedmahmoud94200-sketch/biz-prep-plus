@@ -735,10 +735,10 @@ export default function ProformaApp() {
     for (const src of Array.from(new Set(srcList))) resolved.set(src, await toDataUrl(src));
     const imgData = (src: string) => resolved.get(src) ?? src;
     const ac = themeColor;
-    const firstCap = 6; // slimmer header leaves room for one more row
-    const midCap = 7;
-    const firstLastCap = 4; // single slide: totals + footer take space
-    const midLastCap = 4;
+    const firstCap = 8; // slimmer header + adaptive row height fit more rows
+    const midCap = 9;
+    const firstLastCap = 7; // single slide: totals + footer take space
+    const midLastCap = 8;
     // Distribute rows across slides (balanced, never leaves a near-empty slide)
     const chunks: Row[][] = [];
     const remaining = [...rows];
@@ -806,7 +806,9 @@ export default function ProformaApp() {
         ];
         tr.push((invoiceOnly ? fullRow.slice(0, 11) : fullRow) as Parameters<typeof s.addTable>[0][number]);
       });
-      const rowH = 0.75;
+      // Adaptive row height so the table always ends above the totals/footer band
+      const tableBottom = isLast ? 5.5 : 7.25;
+      const rowH = Math.max(0.46, Math.min(0.75, (tableBottom - tY) / (slice.length + 1)));
       s.addTable(tr, { x: 0.3, y: tY, w: 12.73, rowH, fontSize: 8.5, border: { type: "solid", pt: 0.5, color: "E5E7EB" }, valign: "middle", colW });
       const overlay = (oc: number, src: string, ri: number) => {
         if (!src) return; let x = 0.3; for (let i = 0; i < oc; i++) x += colW[i];
@@ -819,8 +821,10 @@ export default function ProformaApp() {
       slice.forEach((r, idx) => { overlay(3, r.image, idx); overlay(4, r.packing, idx); });
       runningIndex += slice.length;
       if (isLast) {
-        const cY = tY + rowH + slice.length*rowH + 0.25;
-        s.addText(`• ${meta.notes}`, { x: 0.3, y: cY-0.05, w: 12.73, h: 0.3, fontSize: 11, bold: true, color: "222222", align: "right" });
+        const ch0 = 0.9, footerTop = 6.75;
+        const cardsTop = Math.min(tY + rowH * (slice.length + 1) + 0.5, footerTop - 0.2 - ch0);
+        const cY = cardsTop - 0.25;
+        s.addText(`• ${meta.notes}`, { x: 0.3, y: cY-0.3, w: 12.73, h: 0.28, fontSize: 11, bold: true, color: "222222", align: "right" });
         const invTotal = +(totals.tAmount + (transport || 0)).toFixed(2);
         const cards = invoiceOnly ? [
           { l: "T.Ctn", v: String(totals.tCtn) },
@@ -831,19 +835,19 @@ export default function ProformaApp() {
           { l: "T.Ctn", v: String(totals.tCtn) }, { l: "T.CBM", v: totals.tCBM.toFixed(2) },
           { l: "T.Weight", v: totals.tWt.toFixed(2) }, { l: "T.Amount", v: String(totals.tAmount) },
         ];
-        const cw = 2.0, ch = 0.95, gap = 0.15; let cx = 13.03 - (cw*cards.length + gap*(cards.length - 1));
+        const cw = 2.0, ch = ch0, gap = 0.15; let cx = 13.03 - (cw*cards.length + gap*(cards.length - 1));
         cards.forEach((c) => {
           s.addShape("roundRect", { x: cx, y: cY+0.25, w: cw, h: ch, fill: { color: "FFFFFF" }, line: { color: ac, width: 1 }, rectRadius: 0.05 });
           s.addShape("rect", { x: cx+0.02, y: cY+0.27, w: cw-0.04, h: 0.28, fill: { color: ac }, line: { color: ac } });
           s.addText(c.l, { x: cx, y: cY+0.27, w: cw, h: 0.28, fontSize: 10, bold: true, color: "FFFFFF", align: "center", valign: "middle" });
-          s.addText(c.v, { x: cx, y: cY+0.55, w: cw, h: 0.6, fontSize: 18, bold: true, color: "222222", align: "center", valign: "middle" });
+          s.addText(c.v, { x: cx, y: cY+0.55, w: cw, h: ch-0.3, fontSize: 18, bold: true, color: "222222", align: "center", valign: "middle" });
           cx += cw + gap;
         });
         // Footer (company contact) — only on last slide
-        s.addShape("roundRect", { x: 0.3, y: 6.8, w: 12.73, h: 0.65, fill: { color: ac }, line: { color: ac }, rectRadius: 0.08 });
-        s.addText(meta.address, { x: 0.4, y: 6.82, w: 12.5, h: 0.22, fontSize: 9, color: "FFFFFF", align: "center" });
-        s.addText(`tel: ${meta.phone}`, { x: 0.4, y: 7.02, w: 12.5, h: 0.18, fontSize: 8, color: "FFFFFF", align: "center" });
-        s.addText(`E-MAIL: ${meta.email}`, { x: 0.4, y: 7.2, w: 12.5, h: 0.18, fontSize: 8, color: "FFFFFF", align: "center" });
+        s.addShape("roundRect", { x: 0.3, y: footerTop, w: 12.73, h: 0.65, fill: { color: ac }, line: { color: ac }, rectRadius: 0.08 });
+        s.addText(meta.address, { x: 0.4, y: footerTop+0.02, w: 12.5, h: 0.22, fontSize: 9, color: "FFFFFF", align: "center" });
+        s.addText(`tel: ${meta.phone}`, { x: 0.4, y: footerTop+0.22, w: 12.5, h: 0.18, fontSize: 8, color: "FFFFFF", align: "center" });
+        s.addText(`E-MAIL: ${meta.email}`, { x: 0.4, y: footerTop+0.40, w: 12.5, h: 0.18, fontSize: 8, color: "FFFFFF", align: "center" });
       }
     }
     await pptx.writeFile({ fileName: `${invoiceOnly ? "Invoice" : (meta.title || "proforma")}-${meta.customer || "customer"}.pptx` });
