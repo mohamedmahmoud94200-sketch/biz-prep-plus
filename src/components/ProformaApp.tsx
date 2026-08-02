@@ -64,13 +64,16 @@ const newRow = (): Row => ({
   id: crypto.randomUUID(), itemName: "", description: "", image: "", packing: "",
   ctn: "", dozCtn: "", setCtn: "", pcsSet: "", pricePerCtn: "", cbm: "", weight: "",
 });
+const DEFAULT_LOGO_KEY = "proforma_default_logo";
+const getDefaultLogo = () => { try { return localStorage.getItem(DEFAULT_LOGO_KEY) || ""; } catch { return ""; } };
+const setDefaultLogo = (url: string) => { try { localStorage.setItem(DEFAULT_LOGO_KEY, url); } catch { /* ignore */ } };
 const defaultMeta = (): Meta => ({
   company: "KOUJAN COMPANY",
   address: "ARABIC REPUBLIC EGYPT , sadat city svi industrial zone , plot no 6098",
   phone: "00201272883314  -  002012​1265982",
   email: "sales@koujanegypt.com  /  info@koujanegypt.com",
   customer: "", date: new Date().toISOString().slice(0,10),
-  title: "Proforma Invoice", notes: "Prices are E.X work", logo: "",
+  title: "Proforma Invoice", notes: "Prices are E.X work", logo: getDefaultLogo(),
 });
 const THEME_PRESETS = [
   { name:"Emerald", color:"2BB39B" }, { name:"Navy", color:"1E3A8A" },
