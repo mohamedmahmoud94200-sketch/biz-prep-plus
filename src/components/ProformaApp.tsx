@@ -303,6 +303,7 @@ export default function ProformaApp() {
   const [loadFailed, setLoadFailed] = useState(false);
   const [lang, setLang] = useState<Lang>(() => (typeof window !== "undefined" && (localStorage.getItem(LANG_KEY) as Lang)) || "ar");
   const [sendItem, setSendItem] = useState<Row | null>(null);
+  const [lockCW, setLockCW] = useState<boolean>(() => (typeof window !== "undefined" && localStorage.getItem("proforma_lock_cw") === "1"));
   const logoRef = useRef<HTMLInputElement>(null);
   const dirtyIds = useRef<Set<string>>(new Set());
   const dirtyRowIds = useRef<Map<string, Set<string>>>(new Map());
@@ -407,6 +408,7 @@ export default function ProformaApp() {
   }, [loaded, loadFailed, proformas, activeId, lang, loadAll]);
 
   useEffect(() => { try { localStorage.setItem(LANG_KEY, lang); } catch {} }, [lang]);
+  useEffect(() => { try { localStorage.setItem("proforma_lock_cw", lockCW ? "1" : "0"); } catch {} }, [lockCW]);
 
   const active = proformas.find((p) => p.id === activeId) ?? proformas[0];
   const meta = active?.meta ?? defaultMeta();
