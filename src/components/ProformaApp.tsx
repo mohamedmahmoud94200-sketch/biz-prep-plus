@@ -596,10 +596,27 @@ export default function ProformaApp() {
     if (!confirm(lang === "ar" ? `تأكيد حذف المنتج ${row?.itemName || ""}؟` : `Delete ${row?.itemName || "this item"}?`)) return;
     setRows((rs) => rs.filter((r) => r.id !== id));
   };
-  const addRow = () => setRows((rs) => [...rs, newRow()]);
-  const duplicateRow = (id: string) =>
-    setRows((rs) => { const i = rs.findIndex((r) => r.id === id); if (i < 0) return rs;
-      const out = [...rs]; out.splice(i+1, 0, { ...rs[i], id: crypto.randomUUID() }); return out; });
+  // create the row in the database right away so an image upload / refresh never loses it
+  const persistNewRow = (row: Row, order: number) => {
+    const targetId = activeId || active?.id;
+    if (!targetId) return;
+    void supabase.from("proforma_items").insert(rowToItem(row, targetId, order)).then((res) => {
+      if (res.error) { console.error(res.error); markRowsDirty(targetId, [row.id], true); }
+    });
+  };
+  const addRow = () => {
+    const row = newRow();
+    const order = rows.length;
+    setRows((rs) => [...rs, row]);
+    persistNewRow(row, order);
+  };
+  const duplicateRow = (id: string) => {
+    const i = rows.findIndex((r) => r.id === id);
+    if (i < 0) return;
+    const copy = { ...rows[i], id: crypto.randomUUID() };
+    setRows((rs) => { const out = [...rs]; out.splice(i + 1, 0, copy); return out; });
+    persistNewRow(copy, i + 1);
+  };
 
   const sendRowToProformas = (row: Row, targetIds: string[]) => {
     if (targetIds.length === 0) return;
