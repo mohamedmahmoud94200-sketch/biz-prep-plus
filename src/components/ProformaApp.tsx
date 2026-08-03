@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import {
   Plus, Trash2, FileDown, Presentation, Copy, Library, FilePlus, Palette, X,
   Package, Printer, ImageIcon, Send, Save, Languages, LogOut, Star, FileText,
+  Lock, LockOpen,
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -302,6 +303,7 @@ export default function ProformaApp() {
   const [loadFailed, setLoadFailed] = useState(false);
   const [lang, setLang] = useState<Lang>(() => (typeof window !== "undefined" && (localStorage.getItem(LANG_KEY) as Lang)) || "ar");
   const [sendItem, setSendItem] = useState<Row | null>(null);
+  const [lockCW, setLockCW] = useState<boolean>(() => (typeof window !== "undefined" && localStorage.getItem("proforma_lock_cw") === "1"));
   const logoRef = useRef<HTMLInputElement>(null);
   const dirtyIds = useRef<Set<string>>(new Set());
   const dirtyRowIds = useRef<Map<string, Set<string>>>(new Map());
@@ -406,6 +408,7 @@ export default function ProformaApp() {
   }, [loaded, loadFailed, proformas, activeId, lang, loadAll]);
 
   useEffect(() => { try { localStorage.setItem(LANG_KEY, lang); } catch {} }, [lang]);
+  useEffect(() => { try { localStorage.setItem("proforma_lock_cw", lockCW ? "1" : "0"); } catch {} }, [lockCW]);
 
   const active = proformas.find((p) => p.id === activeId) ?? proformas[0];
   const meta = active?.meta ?? defaultMeta();
@@ -593,10 +596,27 @@ export default function ProformaApp() {
     if (!confirm(lang === "ar" ? `تأكيد حذف المنتج ${row?.itemName || ""}؟` : `Delete ${row?.itemName || "this item"}?`)) return;
     setRows((rs) => rs.filter((r) => r.id !== id));
   };
-  const addRow = () => setRows((rs) => [...rs, newRow()]);
-  const duplicateRow = (id: string) =>
-    setRows((rs) => { const i = rs.findIndex((r) => r.id === id); if (i < 0) return rs;
-      const out = [...rs]; out.splice(i+1, 0, { ...rs[i], id: crypto.randomUUID() }); return out; });
+  // create the row in the database right away so an image upload / refresh never loses it
+  const persistNewRow = (row: Row, order: number) => {
+    const targetId = activeId || active?.id;
+    if (!targetId) return;
+    void supabase.from("proforma_items").insert(rowToItem(row, targetId, order)).then((res) => {
+      if (res.error) { console.error(res.error); markRowsDirty(targetId, [row.id], true); }
+    });
+  };
+  const addRow = () => {
+    const row = newRow();
+    const order = rows.length;
+    setRows((rs) => [...rs, row]);
+    persistNewRow(row, order);
+  };
+  const duplicateRow = (id: string) => {
+    const i = rows.findIndex((r) => r.id === id);
+    if (i < 0) return;
+    const copy = { ...rows[i], id: crypto.randomUUID() };
+    setRows((rs) => { const out = [...rs]; out.splice(i + 1, 0, copy); return out; });
+    persistNewRow(copy, i + 1);
+  };
 
   const sendRowToProformas = (row: Row, targetIds: string[]) => {
     if (targetIds.length === 0) return;
@@ -632,7 +652,13 @@ export default function ProformaApp() {
     return items;
   }, [proformas]);
 
-  const copyFromLibrary = (r: Row) => { setRows((rs) => [...rs, { ...r, id: crypto.randomUUID() }]); toast.success(lang === "ar" ? "تمت الإضافة" : "Added"); };
+  const copyFromLibrary = (r: Row) => {
+    const copy = { ...r, id: crypto.randomUUID() };
+    const order = rows.length;
+    setRows((rs) => [...rs, copy]);
+    persistNewRow(copy, order);
+    toast.success(lang === "ar" ? "تمت الإضافة" : "Added");
+  };
 
   const onImage = async (id: string, f: File | null, field: "image" | "packing") => {
     if (!f) return;
@@ -640,8 +666,14 @@ export default function ProformaApp() {
     try {
       const url = await storeImage(f);
       updateRow(id, { [field]: url } as Partial<Row>);
-      const imagePatch = field === "image" ? { image: url } : { packing: url };
-      const { error } = await supabase.from("proforma_items").update(imagePatch).eq("id", id);
+      const targetId = activeId || active?.id;
+      const idx = rows.findIndex((r) => r.id === id);
+      const current = idx >= 0 ? rows[idx] : null;
+      if (!targetId || !current) return;
+      // upsert (not update) so the row is created if it was only added locally
+      const { error } = await supabase
+        .from("proforma_items")
+        .upsert(rowToItem({ ...current, [field]: url } as Row, targetId, idx));
       if (error) throw error;
     } catch (error) {
       console.error(error);
@@ -893,6 +925,10 @@ export default function ProformaApp() {
               <Languages className="mr-1 h-4 w-4" /> {t.lang}
             </Button>
             <Button size="sm" variant="outline" onClick={onSaveNow}><Save className="mr-1 h-4 w-4" /> {t.save}</Button>
+            <Button size="sm" variant={lockCW ? "default" : "outline"} onClick={() => { setLockCW((v) => !v); toast.success(lockCW ? (lang === "ar" ? "تم فتح CBM / Weight" : "CBM / Weight unlocked") : (lang === "ar" ? "تم قفل CBM / Weight" : "CBM / Weight locked")); }}
+              title="CBM / Weight" className={lockCW ? "bg-rose-600 text-white hover:bg-rose-700" : ""}>
+              {lockCW ? <Lock className="mr-1 h-4 w-4" /> : <LockOpen className="mr-1 h-4 w-4" />} CBM / Weight
+            </Button>
             <Button size="sm" variant="outline" onClick={onPrint}><Printer className="mr-1 h-4 w-4" /> {t.print}</Button>
             <Button size="sm" onClick={() => exportPDF()} className="bg-sky-600 text-white hover:bg-sky-700"><FileDown className="mr-1 h-4 w-4" /> {t.pdf}</Button>
             <Button size="sm" onClick={() => exportPPTX()} className="bg-orange-500 text-white hover:bg-orange-600"><Presentation className="mr-1 h-4 w-4" /> {t.pptx}</Button>
@@ -974,7 +1010,7 @@ export default function ProformaApp() {
               </thead>
               <tbody>
                 {rows.map((r, i) => (
-                  <RowEditor key={r.id} index={i+1} row={r} accent={accent} lang={lang}
+                  <RowEditor key={r.id} index={i+1} row={r} accent={accent} lang={lang} lockCW={lockCW}
                     onChange={(p) => updateRow(r.id, p)}
                     onImage={(f) => onImage(r.id, f, "image")}
                     onPacking={(f) => onImage(r.id, f, "packing")}
@@ -1112,7 +1148,7 @@ export default function ProformaApp() {
 
 /* ───────────────────────────  PIECES  ─────────────────────────── */
 
-function CellInput({ value, onChange, type = "text", align = "center" }: { value: string; onChange: (v: string) => void; type?: string; align?: "left"|"center"|"right" }) {
+function CellInput({ value, onChange, type = "text", align = "center", readOnly = false }: { value: string; onChange: (v: string) => void; type?: string; align?: "left"|"center"|"right"; readOnly?: boolean }) {
   const inputType = type === "number" ? "text" : type;
   return (
     <>
@@ -1120,8 +1156,9 @@ function CellInput({ value, onChange, type = "text", align = "center" }: { value
         type={inputType}
         inputMode={type === "number" ? "decimal" : undefined}
         value={value}
+        readOnly={readOnly}
         onChange={(e) => onChange(e.target.value)}
-        className="cell-input w-full rounded border border-input bg-white px-1.5 py-1 text-[12px] outline-none transition focus:border-foreground focus:ring-1 focus:ring-foreground/20 print:hidden"
+        className={`cell-input w-full rounded border border-input px-1.5 py-1 text-[12px] outline-none transition focus:border-foreground focus:ring-1 focus:ring-foreground/20 print:hidden ${readOnly ? "cursor-not-allowed bg-muted/50 text-muted-foreground" : "bg-white"}`}
         style={{ textAlign: align }}
       />
       <div
@@ -1144,8 +1181,8 @@ function ImgCell({ src, onPick, icon }: { src: string; onPick: (f: File | null) 
     </>
   );
 }
-function RowEditor({ index, row, accent, lang, onChange, onImage, onPacking, onDuplicate, onRemove, onSend }:
-  { index: number; row: Row; accent: string; lang: Lang;
+function RowEditor({ index, row, accent, lang, lockCW = false, onChange, onImage, onPacking, onDuplicate, onRemove, onSend }:
+  { index: number; row: Row; accent: string; lang: Lang; lockCW?: boolean;
     onChange: (p: Partial<Row>) => void; onImage: (f: File | null) => void; onPacking: (f: File | null) => void;
     onDuplicate: () => void; onRemove: () => void; onSend: () => void; }) {
   const amt = amount(row); const tc = tCbm(row); const tw = tWeight(row);
@@ -1163,9 +1200,9 @@ function RowEditor({ index, row, accent, lang, onChange, onImage, onPacking, onD
       <td className="w-14 px-1"><CellInput value={row.pcsSet} onChange={(v) => onChange({ pcsSet: v })} /></td>
       <td className="w-16 px-1"><CellInput value={row.pricePerCtn} onChange={(v) => onChange({ pricePerCtn: v })} type="number" /></td>
       <td className="w-16 px-1 text-center text-[12px] font-bold" style={{ color: accent }}>{amt || ""}</td>
-      <td className="w-32 px-1"><CellInput value={row.cbm} onChange={(v) => onChange({ cbm: v })} type="number" /></td>
+      <td className="w-32 px-1"><CellInput value={row.cbm} onChange={(v) => onChange({ cbm: v })} type="number" readOnly={lockCW} /></td>
       <td className="w-32 px-1 text-center text-[12px] font-semibold">{tc || ""}</td>
-      <td className="w-24 px-1"><CellInput value={row.weight} onChange={(v) => onChange({ weight: v })} type="number" /></td>
+      <td className="w-24 px-1"><CellInput value={row.weight} onChange={(v) => onChange({ weight: v })} type="number" readOnly={lockCW} /></td>
       <td className="w-24 px-1 text-center text-[12px] font-semibold">{tw || ""}</td>
       <td className="w-24 px-1 print:hidden">
         <div className="flex justify-center gap-1">
