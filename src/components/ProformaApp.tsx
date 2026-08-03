@@ -652,7 +652,13 @@ export default function ProformaApp() {
     return items;
   }, [proformas]);
 
-  const copyFromLibrary = (r: Row) => { setRows((rs) => [...rs, { ...r, id: crypto.randomUUID() }]); toast.success(lang === "ar" ? "تمت الإضافة" : "Added"); };
+  const copyFromLibrary = (r: Row) => {
+    const copy = { ...r, id: crypto.randomUUID() };
+    const order = rows.length;
+    setRows((rs) => [...rs, copy]);
+    persistNewRow(copy, order);
+    toast.success(lang === "ar" ? "تمت الإضافة" : "Added");
+  };
 
   const onImage = async (id: string, f: File | null, field: "image" | "packing") => {
     if (!f) return;
@@ -660,8 +666,14 @@ export default function ProformaApp() {
     try {
       const url = await storeImage(f);
       updateRow(id, { [field]: url } as Partial<Row>);
-      const imagePatch = field === "image" ? { image: url } : { packing: url };
-      const { error } = await supabase.from("proforma_items").update(imagePatch).eq("id", id);
+      const targetId = activeId || active?.id;
+      const idx = rows.findIndex((r) => r.id === id);
+      const current = idx >= 0 ? rows[idx] : null;
+      if (!targetId || !current) return;
+      // upsert (not update) so the row is created if it was only added locally
+      const { error } = await supabase
+        .from("proforma_items")
+        .upsert(rowToItem({ ...current, [field]: url } as Row, targetId, idx));
       if (error) throw error;
     } catch (error) {
       console.error(error);
