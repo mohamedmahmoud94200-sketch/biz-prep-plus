@@ -925,6 +925,10 @@ export default function ProformaApp() {
               <Languages className="mr-1 h-4 w-4" /> {t.lang}
             </Button>
             <Button size="sm" variant="outline" onClick={onSaveNow}><Save className="mr-1 h-4 w-4" /> {t.save}</Button>
+            <Button size="sm" variant={lockCW ? "default" : "outline"} onClick={() => { setLockCW((v) => !v); toast.success(lockCW ? (lang === "ar" ? "تم فتح CBM / Weight" : "CBM / Weight unlocked") : (lang === "ar" ? "تم قفل CBM / Weight" : "CBM / Weight locked")); }}
+              title="CBM / Weight" className={lockCW ? "bg-rose-600 text-white hover:bg-rose-700" : ""}>
+              {lockCW ? <Lock className="mr-1 h-4 w-4" /> : <LockOpen className="mr-1 h-4 w-4" />} CBM / Weight
+            </Button>
             <Button size="sm" variant="outline" onClick={onPrint}><Printer className="mr-1 h-4 w-4" /> {t.print}</Button>
             <Button size="sm" onClick={() => exportPDF()} className="bg-sky-600 text-white hover:bg-sky-700"><FileDown className="mr-1 h-4 w-4" /> {t.pdf}</Button>
             <Button size="sm" onClick={() => exportPPTX()} className="bg-orange-500 text-white hover:bg-orange-600"><Presentation className="mr-1 h-4 w-4" /> {t.pptx}</Button>
