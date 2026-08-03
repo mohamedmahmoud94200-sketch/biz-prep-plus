@@ -1010,7 +1010,7 @@ export default function ProformaApp() {
               </thead>
               <tbody>
                 {rows.map((r, i) => (
-                  <RowEditor key={r.id} index={i+1} row={r} accent={accent} lang={lang}
+                  <RowEditor key={r.id} index={i+1} row={r} accent={accent} lang={lang} lockCW={lockCW}
                     onChange={(p) => updateRow(r.id, p)}
                     onImage={(f) => onImage(r.id, f, "image")}
                     onPacking={(f) => onImage(r.id, f, "packing")}
@@ -1148,7 +1148,7 @@ export default function ProformaApp() {
 
 /* ───────────────────────────  PIECES  ─────────────────────────── */
 
-function CellInput({ value, onChange, type = "text", align = "center" }: { value: string; onChange: (v: string) => void; type?: string; align?: "left"|"center"|"right" }) {
+function CellInput({ value, onChange, type = "text", align = "center", readOnly = false }: { value: string; onChange: (v: string) => void; type?: string; align?: "left"|"center"|"right"; readOnly?: boolean }) {
   const inputType = type === "number" ? "text" : type;
   return (
     <>
@@ -1156,8 +1156,9 @@ function CellInput({ value, onChange, type = "text", align = "center" }: { value
         type={inputType}
         inputMode={type === "number" ? "decimal" : undefined}
         value={value}
+        readOnly={readOnly}
         onChange={(e) => onChange(e.target.value)}
-        className="cell-input w-full rounded border border-input bg-white px-1.5 py-1 text-[12px] outline-none transition focus:border-foreground focus:ring-1 focus:ring-foreground/20 print:hidden"
+        className={`cell-input w-full rounded border border-input px-1.5 py-1 text-[12px] outline-none transition focus:border-foreground focus:ring-1 focus:ring-foreground/20 print:hidden ${readOnly ? "cursor-not-allowed bg-muted/50 text-muted-foreground" : "bg-white"}`}
         style={{ textAlign: align }}
       />
       <div
@@ -1180,8 +1181,8 @@ function ImgCell({ src, onPick, icon }: { src: string; onPick: (f: File | null) 
     </>
   );
 }
-function RowEditor({ index, row, accent, lang, onChange, onImage, onPacking, onDuplicate, onRemove, onSend }:
-  { index: number; row: Row; accent: string; lang: Lang;
+function RowEditor({ index, row, accent, lang, lockCW = false, onChange, onImage, onPacking, onDuplicate, onRemove, onSend }:
+  { index: number; row: Row; accent: string; lang: Lang; lockCW?: boolean;
     onChange: (p: Partial<Row>) => void; onImage: (f: File | null) => void; onPacking: (f: File | null) => void;
     onDuplicate: () => void; onRemove: () => void; onSend: () => void; }) {
   const amt = amount(row); const tc = tCbm(row); const tw = tWeight(row);
@@ -1199,9 +1200,9 @@ function RowEditor({ index, row, accent, lang, onChange, onImage, onPacking, onD
       <td className="w-14 px-1"><CellInput value={row.pcsSet} onChange={(v) => onChange({ pcsSet: v })} /></td>
       <td className="w-16 px-1"><CellInput value={row.pricePerCtn} onChange={(v) => onChange({ pricePerCtn: v })} type="number" /></td>
       <td className="w-16 px-1 text-center text-[12px] font-bold" style={{ color: accent }}>{amt || ""}</td>
-      <td className="w-32 px-1"><CellInput value={row.cbm} onChange={(v) => onChange({ cbm: v })} type="number" /></td>
+      <td className="w-32 px-1"><CellInput value={row.cbm} onChange={(v) => onChange({ cbm: v })} type="number" readOnly={lockCW} /></td>
       <td className="w-32 px-1 text-center text-[12px] font-semibold">{tc || ""}</td>
-      <td className="w-24 px-1"><CellInput value={row.weight} onChange={(v) => onChange({ weight: v })} type="number" /></td>
+      <td className="w-24 px-1"><CellInput value={row.weight} onChange={(v) => onChange({ weight: v })} type="number" readOnly={lockCW} /></td>
       <td className="w-24 px-1 text-center text-[12px] font-semibold">{tw || ""}</td>
       <td className="w-24 px-1 print:hidden">
         <div className="flex justify-center gap-1">
