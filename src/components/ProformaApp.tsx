@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import {
   Plus, Trash2, FileDown, Presentation, Copy, Library, FilePlus, Palette, X,
   Package, Printer, ImageIcon, Send, Save, Languages, LogOut, Star, FileText,
+  Lock, LockOpen,
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
