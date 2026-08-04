@@ -793,8 +793,8 @@ export default function ProformaApp() {
     }
     const pages = chunks.length;
     // Column widths must sum to table width (12.73)
-    const allColW = [0.40,1.16,1.30,1.20,1.20,0.62,0.74,0.74,0.68,0.91,0.96,0.62,0.74,0.68,0.79];
-    const allHead = ["No","Item Name","Description","Image","Packing","Ctn","Doz/Ctn","Set/Ctn","Pcs/Set","Price/Set","T.Amount","CBM","T.CBM","Weight","T.Weight"];
+    const allColW = [0.38,1.30,1.40,1.83,1.83,0.55,0.60,0.60,0.58,0.68,0.74,0.52,0.60,0.52,0.60];
+    const allHead = ["No","Item Name","Description","Image","Packing","Ctn","Doz/\nCtn","Set/\nCtn","Pcs/\nSet","Price/\nSet","T.Amount","CBM","T.CBM","Weight","T.Weight"];
     const invoiceColW = [0.5,1.3,1.45,1.65,1.6,0.85,1.0,1.0,0.95,1.25,1.18];
     const colW = invoiceOnly ? invoiceColW : allColW;
     const head = invoiceOnly ? allHead.slice(0, 11) : allHead;
@@ -822,7 +822,7 @@ export default function ProformaApp() {
         s.addText(`${p + 1} / ${pages}`, { x: 10, y: 0.27, w: 3, h: 0.45, fontSize: 11, color: "FFFFFF", align: "right", valign: "middle" });
         tY = 0.95;
       }
-      const headerRow = head.map((h) => ({ text: h, options: { bold: true, color: "FFFFFF", fill: { color: ac }, align: "center", valign: "middle", fontSize: 9 } }));
+      const headerRow = head.map((h) => ({ text: h, options: { bold: true, color: "FFFFFF", fill: { color: ac }, align: "center", valign: "middle", fontSize: h.includes("\n") || h.length > 7 ? 7.5 : 9 } }));
       const slice = chunks[p];
       const tr: Parameters<typeof s.addTable>[0] = [headerRow as Parameters<typeof s.addTable>[0][number]];
       slice.forEach((r, idx) => {
@@ -843,11 +843,11 @@ export default function ProformaApp() {
       });
       // Adaptive row height so the table always ends above the totals/footer band
       const tableBottom = isLast ? 5.5 : 7.25;
-      const rowH = Math.max(0.6, Math.min(0.95, (tableBottom - tY) / (slice.length + 1)));
+      const rowH = Math.max(0.6, Math.min(1.2, (tableBottom - tY) / (slice.length + 1)));
       s.addTable(tr, { x: 0.3, y: tY, w: 12.73, rowH, fontSize: 8.5, border: { type: "solid", pt: 0.5, color: "E5E7EB" }, valign: "middle", colW });
       const overlay = (oc: number, src: string, ri: number) => {
         if (!src) return; let x = 0.3; for (let i = 0; i < oc; i++) x += colW[i];
-        const cw = colW[oc]; const size = Math.min(rowH - 0.08, cw - 0.08);
+        const cw = colW[oc]; const size = Math.min(rowH - 0.06, cw - 0.06);
         const y = tY + rowH + ri*rowH + (rowH - size) / 2;
         const cx = x + (cw-size)/2;
         try {
@@ -1003,8 +1003,16 @@ export default function ProformaApp() {
                   {t.cols.map((h, ci) => {
                     // 0=No, 1=Item Name (left), 2=Description (left), rest centered
                     const align = ci === 1 || ci === 2 ? "text-left" : "text-center";
+                    const parts = h.includes("/") ? h.split("/") : null;
                     return (
-                      <th key={h} className={`px-2 py-2.5 text-xs font-semibold uppercase ${align}`}>{h}</th>
+                      <th key={h} className={`px-1 py-2.5 text-xs font-semibold uppercase leading-tight ${align}`}>
+                        {parts ? (
+                          <span className="block">
+                            <span className="block whitespace-nowrap">{parts[0]}/</span>
+                            <span className="block whitespace-nowrap">{parts.slice(1).join("/")}</span>
+                          </span>
+                        ) : h}
+                      </th>
                     );
                   })}
                 </tr>
@@ -1084,7 +1092,21 @@ export default function ProformaApp() {
         #printable.pdf-capture .overflow-x-auto { overflow: visible !important; }
         #printable.pdf-capture table { table-layout: auto !important; min-width: 100% !important; width: 100% !important; }
         #printable.pdf-capture td { word-break: break-word; white-space: normal !important; vertical-align: middle !important; padding: 4px 3px !important; }
-        #printable.pdf-capture th { white-space: nowrap !important; padding: 6px 4px !important; font-size: 10px !important; }
+        #printable.pdf-capture th { white-space: normal !important; padding: 6px 2px !important; font-size: 10px !important; line-height: 1.1 !important; }
+        /* Narrow numeric columns: Ctn, Doz/Ctn, Set/Ctn, Pcs/Set, Price/Set */
+        #printable.pdf-capture th:nth-child(6), #printable.pdf-capture td:nth-child(6) { width: 52px !important; max-width: 52px !important; }
+        #printable.pdf-capture th:nth-child(7), #printable.pdf-capture td:nth-child(7),
+        #printable.pdf-capture th:nth-child(8), #printable.pdf-capture td:nth-child(8),
+        #printable.pdf-capture th:nth-child(9), #printable.pdf-capture td:nth-child(9),
+        #printable.pdf-capture th:nth-child(10), #printable.pdf-capture td:nth-child(10) { width: 58px !important; max-width: 58px !important; }
+        /* T.Amount slightly smaller */
+        #printable.pdf-capture th:nth-child(11) { font-size: 9px !important; }
+        #printable.pdf-capture th:nth-child(11), #printable.pdf-capture td:nth-child(11) { width: 78px !important; max-width: 78px !important; }
+        /* CBM / T.CBM / Weight / T.Weight — only as wide as the text */
+        #printable.pdf-capture th:nth-child(12), #printable.pdf-capture td:nth-child(12),
+        #printable.pdf-capture th:nth-child(13), #printable.pdf-capture td:nth-child(13),
+        #printable.pdf-capture th:nth-child(14), #printable.pdf-capture td:nth-child(14),
+        #printable.pdf-capture th:nth-child(15), #printable.pdf-capture td:nth-child(15) { width: 54px !important; max-width: 54px !important; font-size: 9px !important; }
         /* Cap Item Name / Description so they don't dominate */
         #printable.pdf-capture th:nth-child(2), #printable.pdf-capture td:nth-child(2) { max-width: 180px !important; width: 180px !important; }
         #printable.pdf-capture th:nth-child(3), #printable.pdf-capture td:nth-child(3) { max-width: 220px !important; width: 220px !important; }
