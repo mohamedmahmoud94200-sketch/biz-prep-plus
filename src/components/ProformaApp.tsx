@@ -793,9 +793,9 @@ export default function ProformaApp() {
     }
     const pages = chunks.length;
     // Column widths must sum to table width (12.73)
-    const allColW = [0.40,1.24,1.58,1.02,1.02,0.62,0.74,0.74,0.68,0.91,0.96,0.62,0.74,0.68,0.79];
+    const allColW = [0.40,1.16,1.30,1.20,1.20,0.62,0.74,0.74,0.68,0.91,0.96,0.62,0.74,0.68,0.79];
     const allHead = ["No","Item Name","Description","Image","Packing","Ctn","Doz/Ctn","Set/Ctn","Pcs/Set","Price/Set","T.Amount","CBM","T.CBM","Weight","T.Weight"];
-    const invoiceColW = [0.5,1.35,1.75,1.45,1.4,0.85,1.0,1.0,0.95,1.25,1.23];
+    const invoiceColW = [0.5,1.3,1.45,1.65,1.6,0.85,1.0,1.0,0.95,1.25,1.18];
     const colW = invoiceOnly ? invoiceColW : allColW;
     const head = invoiceOnly ? allHead.slice(0, 11) : allHead;
     let runningIndex = 0;
@@ -843,11 +843,12 @@ export default function ProformaApp() {
       });
       // Adaptive row height so the table always ends above the totals/footer band
       const tableBottom = isLast ? 5.5 : 7.25;
-      const rowH = Math.max(0.46, Math.min(0.75, (tableBottom - tY) / (slice.length + 1)));
+      const rowH = Math.max(0.6, Math.min(0.95, (tableBottom - tY) / (slice.length + 1)));
       s.addTable(tr, { x: 0.3, y: tY, w: 12.73, rowH, fontSize: 8.5, border: { type: "solid", pt: 0.5, color: "E5E7EB" }, valign: "middle", colW });
       const overlay = (oc: number, src: string, ri: number) => {
         if (!src) return; let x = 0.3; for (let i = 0; i < oc; i++) x += colW[i];
-        const cw = colW[oc]; const y = tY + rowH + ri*rowH + 0.04; const size = rowH - 0.12;
+        const cw = colW[oc]; const size = Math.min(rowH - 0.08, cw - 0.08);
+        const y = tY + rowH + ri*rowH + (rowH - size) / 2;
         const cx = x + (cw-size)/2;
         try {
           s.addImage({ data: imgData(src), x: cx, y, w: size, h: size, sizing: { type: "contain", w: size, h: size } });
@@ -1088,7 +1089,7 @@ export default function ProformaApp() {
         #printable.pdf-capture th:nth-child(2), #printable.pdf-capture td:nth-child(2) { max-width: 180px !important; width: 180px !important; }
         #printable.pdf-capture th:nth-child(3), #printable.pdf-capture td:nth-child(3) { max-width: 220px !important; width: 220px !important; }
         #printable.pdf-capture .cell-text { font-size: 11px !important; line-height: 1.25 !important; }
-        #printable.pdf-capture .img-cell-btn { width: 70px !important; height: 70px !important; }
+        #printable.pdf-capture .img-cell-btn { width: 120px !important; height: 120px !important; }
         #printable.pdf-capture .img-cell-btn img { object-fit: contain !important; }
         #printable.pdf-capture .meta-input { display: none !important; }
         #printable.pdf-capture .meta-text { display: block !important; }
@@ -1174,7 +1175,7 @@ function ImgCell({ src, onPick, icon }: { src: string; onPick: (f: File | null) 
   const ref = useRef<HTMLInputElement>(null);
   return (
     <>
-      <button type="button" onClick={() => ref.current?.click()} className={`img-cell-btn mx-auto flex h-14 w-14 items-center justify-center overflow-hidden rounded border ${src ? "" : "border-dashed bg-muted/30"} hover:border-foreground`}>
+      <button type="button" onClick={() => ref.current?.click()} className={`img-cell-btn mx-auto flex h-24 w-24 items-center justify-center overflow-hidden rounded border ${src ? "" : "border-dashed bg-muted/30"} hover:border-foreground`}>
         {src ? <img src={src} crossOrigin="anonymous" alt="" className="h-full w-full object-contain" /> : icon === "img" ? <ImageIcon className="h-4 w-4 text-muted-foreground" /> : <Package className="h-4 w-4 text-muted-foreground" />}
       </button>
       <input ref={ref} type="file" accept="image/*" className="hidden" onChange={(e) => onPick(e.target.files?.[0] ?? null)} />
@@ -1192,8 +1193,8 @@ function RowEditor({ index, row, accent, lang, lockCW = false, onChange, onImage
       <td className="w-10 px-2 text-center text-xs font-semibold text-muted-foreground">{index}</td>
       <td className="px-2"><CellInput value={row.itemName} onChange={(v) => onChange({ itemName: v })} align="left" /></td>
       <td className="px-2"><CellInput value={row.description} onChange={(v) => onChange({ description: v })} align="left" /></td>
-      <td className="w-20 px-1"><ImgCell src={row.image} onPick={onImage} icon="img" /></td>
-      <td className="w-20 px-1"><ImgCell src={row.packing} onPick={onPacking} icon="pkg" /></td>
+      <td className="w-28 px-1"><ImgCell src={row.image} onPick={onImage} icon="img" /></td>
+      <td className="w-28 px-1"><ImgCell src={row.packing} onPick={onPacking} icon="pkg" /></td>
       <td className="w-14 px-1"><CellInput value={row.ctn} onChange={(v) => onChange({ ctn: v })} type="number" /></td>
       <td className="w-14 px-1"><CellInput value={row.dozCtn} onChange={(v) => onChange({ dozCtn: v })} /></td>
       <td className="w-14 px-1"><CellInput value={row.setCtn} onChange={(v) => onChange({ setCtn: v })} /></td>
