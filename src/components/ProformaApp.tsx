@@ -1092,7 +1092,21 @@ export default function ProformaApp() {
         #printable.pdf-capture .overflow-x-auto { overflow: visible !important; }
         #printable.pdf-capture table { table-layout: auto !important; min-width: 100% !important; width: 100% !important; }
         #printable.pdf-capture td { word-break: break-word; white-space: normal !important; vertical-align: middle !important; padding: 4px 3px !important; }
-        #printable.pdf-capture th { white-space: nowrap !important; padding: 6px 4px !important; font-size: 10px !important; }
+        #printable.pdf-capture th { white-space: normal !important; padding: 6px 2px !important; font-size: 10px !important; line-height: 1.1 !important; }
+        /* Narrow numeric columns: Ctn, Doz/Ctn, Set/Ctn, Pcs/Set, Price/Set */
+        #printable.pdf-capture th:nth-child(6), #printable.pdf-capture td:nth-child(6) { width: 52px !important; max-width: 52px !important; }
+        #printable.pdf-capture th:nth-child(7), #printable.pdf-capture td:nth-child(7),
+        #printable.pdf-capture th:nth-child(8), #printable.pdf-capture td:nth-child(8),
+        #printable.pdf-capture th:nth-child(9), #printable.pdf-capture td:nth-child(9),
+        #printable.pdf-capture th:nth-child(10), #printable.pdf-capture td:nth-child(10) { width: 58px !important; max-width: 58px !important; }
+        /* T.Amount slightly smaller */
+        #printable.pdf-capture th:nth-child(11) { font-size: 9px !important; }
+        #printable.pdf-capture th:nth-child(11), #printable.pdf-capture td:nth-child(11) { width: 78px !important; max-width: 78px !important; }
+        /* CBM / T.CBM / Weight / T.Weight — only as wide as the text */
+        #printable.pdf-capture th:nth-child(12), #printable.pdf-capture td:nth-child(12),
+        #printable.pdf-capture th:nth-child(13), #printable.pdf-capture td:nth-child(13),
+        #printable.pdf-capture th:nth-child(14), #printable.pdf-capture td:nth-child(14),
+        #printable.pdf-capture th:nth-child(15), #printable.pdf-capture td:nth-child(15) { width: 54px !important; max-width: 54px !important; font-size: 9px !important; }
         /* Cap Item Name / Description so they don't dominate */
         #printable.pdf-capture th:nth-child(2), #printable.pdf-capture td:nth-child(2) { max-width: 180px !important; width: 180px !important; }
         #printable.pdf-capture th:nth-child(3), #printable.pdf-capture td:nth-child(3) { max-width: 220px !important; width: 220px !important; }
