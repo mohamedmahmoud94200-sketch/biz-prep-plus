@@ -793,8 +793,8 @@ export default function ProformaApp() {
     }
     const pages = chunks.length;
     // Column widths must sum to table width (12.73)
-    const allColW = [0.40,1.16,1.30,1.20,1.20,0.62,0.74,0.74,0.68,0.91,0.96,0.62,0.74,0.68,0.79];
-    const allHead = ["No","Item Name","Description","Image","Packing","Ctn","Doz/Ctn","Set/Ctn","Pcs/Set","Price/Set","T.Amount","CBM","T.CBM","Weight","T.Weight"];
+    const allColW = [0.38,1.30,1.40,1.83,1.83,0.55,0.60,0.60,0.58,0.68,0.74,0.52,0.60,0.52,0.60];
+    const allHead = ["No","Item Name","Description","Image","Packing","Ctn","Doz/\nCtn","Set/\nCtn","Pcs/\nSet","Price/\nSet","T.Amount","CBM","T.CBM","Weight","T.Weight"];
     const invoiceColW = [0.5,1.3,1.45,1.65,1.6,0.85,1.0,1.0,0.95,1.25,1.18];
     const colW = invoiceOnly ? invoiceColW : allColW;
     const head = invoiceOnly ? allHead.slice(0, 11) : allHead;
@@ -822,7 +822,7 @@ export default function ProformaApp() {
         s.addText(`${p + 1} / ${pages}`, { x: 10, y: 0.27, w: 3, h: 0.45, fontSize: 11, color: "FFFFFF", align: "right", valign: "middle" });
         tY = 0.95;
       }
-      const headerRow = head.map((h) => ({ text: h, options: { bold: true, color: "FFFFFF", fill: { color: ac }, align: "center", valign: "middle", fontSize: 9 } }));
+      const headerRow = head.map((h) => ({ text: h, options: { bold: true, color: "FFFFFF", fill: { color: ac }, align: "center", valign: "middle", fontSize: h.includes("\n") || h.length > 7 ? 7.5 : 9 } }));
       const slice = chunks[p];
       const tr: Parameters<typeof s.addTable>[0] = [headerRow as Parameters<typeof s.addTable>[0][number]];
       slice.forEach((r, idx) => {
@@ -843,11 +843,11 @@ export default function ProformaApp() {
       });
       // Adaptive row height so the table always ends above the totals/footer band
       const tableBottom = isLast ? 5.5 : 7.25;
-      const rowH = Math.max(0.6, Math.min(0.95, (tableBottom - tY) / (slice.length + 1)));
+      const rowH = Math.max(0.6, Math.min(1.2, (tableBottom - tY) / (slice.length + 1)));
       s.addTable(tr, { x: 0.3, y: tY, w: 12.73, rowH, fontSize: 8.5, border: { type: "solid", pt: 0.5, color: "E5E7EB" }, valign: "middle", colW });
       const overlay = (oc: number, src: string, ri: number) => {
         if (!src) return; let x = 0.3; for (let i = 0; i < oc; i++) x += colW[i];
-        const cw = colW[oc]; const size = Math.min(rowH - 0.08, cw - 0.08);
+        const cw = colW[oc]; const size = Math.min(rowH - 0.06, cw - 0.06);
         const y = tY + rowH + ri*rowH + (rowH - size) / 2;
         const cx = x + (cw-size)/2;
         try {
