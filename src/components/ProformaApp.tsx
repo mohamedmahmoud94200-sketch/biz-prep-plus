@@ -1003,8 +1003,16 @@ export default function ProformaApp() {
                   {t.cols.map((h, ci) => {
                     // 0=No, 1=Item Name (left), 2=Description (left), rest centered
                     const align = ci === 1 || ci === 2 ? "text-left" : "text-center";
+                    const parts = h.includes("/") ? h.split("/") : null;
                     return (
-                      <th key={h} className={`px-2 py-2.5 text-xs font-semibold uppercase ${align}`}>{h}</th>
+                      <th key={h} className={`px-1 py-2.5 text-xs font-semibold uppercase leading-tight ${align}`}>
+                        {parts ? (
+                          <span className="block">
+                            <span className="block whitespace-nowrap">{parts[0]}/</span>
+                            <span className="block whitespace-nowrap">{parts.slice(1).join("/")}</span>
+                          </span>
+                        ) : h}
+                      </th>
                     );
                   })}
                 </tr>
