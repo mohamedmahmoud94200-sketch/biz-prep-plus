@@ -770,10 +770,10 @@ export default function ProformaApp() {
     for (const src of Array.from(new Set(srcList))) resolved.set(src, await toDataUrl(src));
     const imgData = (src: string) => resolved.get(src) ?? src;
     const ac = themeColor;
-    const firstCap = 8; // slimmer header + adaptive row height fit more rows
-    const midCap = 9;
-    const firstLastCap = 7; // single slide: totals + footer take space
-    const midLastCap = 8;
+    const firstCap = 6; // fewer rows per slide => taller rows => bigger images
+    const midCap = 7;
+    const firstLastCap = 5; // single slide: totals + footer take space
+    const midLastCap = 6;
     // Distribute rows across slides (balanced, never leaves a near-empty slide)
     const chunks: Row[][] = [];
     const remaining = [...rows];
@@ -843,15 +843,15 @@ export default function ProformaApp() {
       });
       // Adaptive row height so the table always ends above the totals/footer band
       const tableBottom = isLast ? 5.5 : 7.25;
-      const rowH = Math.max(0.6, Math.min(1.2, (tableBottom - tY) / (slice.length + 1)));
+      const rowH = Math.max(0.6, Math.min(1.75, (tableBottom - tY) / (slice.length + 1)));
       s.addTable(tr, { x: 0.3, y: tY, w: 12.73, rowH, fontSize: 8.5, border: { type: "solid", pt: 0.5, color: "E5E7EB" }, valign: "middle", colW });
       const overlay = (oc: number, src: string, ri: number) => {
         if (!src) return; let x = 0.3; for (let i = 0; i < oc; i++) x += colW[i];
-        const cw = colW[oc]; const size = Math.min(rowH - 0.06, cw - 0.06);
-        const y = tY + rowH + ri*rowH + (rowH - size) / 2;
-        const cx = x + (cw-size)/2;
+        const cw = colW[oc]; const bw = cw - 0.04; const bh = rowH - 0.04;
+        const y = tY + rowH + ri*rowH + 0.02;
+        const cx = x + 0.02;
         try {
-          s.addImage({ data: imgData(src), x: cx, y, w: size, h: size, sizing: { type: "contain", w: size, h: size } });
+          s.addImage({ data: imgData(src), x: cx, y, w: bw, h: bh, sizing: { type: "contain", w: bw, h: bh } });
         } catch {}
       };
       slice.forEach((r, idx) => { overlay(3, r.image, idx); overlay(4, r.packing, idx); });
