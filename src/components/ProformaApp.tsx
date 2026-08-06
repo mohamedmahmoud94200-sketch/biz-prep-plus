@@ -810,12 +810,15 @@ export default function ProformaApp() {
       chunks.push(remaining.splice(0, cap));
     }
     const pages = chunks.length;
-    // Column widths must sum to table width (12.73)
-    const allColW = [0.38,1.30,1.40,1.83,1.83,0.55,0.60,0.60,0.58,0.68,0.74,0.52,0.60,0.52,0.60];
+    // Column widths come from the layout panel, normalized to the table width (12.73)
+    const norm = (arr: number[]) => { const s = arr.reduce((a, b) => a + b, 0) || 1; return arr.map((w) => +(w / s * 12.73).toFixed(3)); };
+    const allColW = norm(layout.widths);
     const allHead = ["No","Item Name","Description","Image","Packing","Ctn","Doz/\nCtn","Set/\nCtn","Pcs/\nSet","Price/\nSet","T.Amount","CBM","T.CBM","Weight","T.Weight"];
-    const invoiceColW = [0.5,1.3,1.45,1.65,1.6,0.85,1.0,1.0,0.95,1.25,1.18];
+    const invoiceColW = norm(layout.widths.slice(0, 11));
     const colW = invoiceOnly ? invoiceColW : allColW;
     const head = invoiceOnly ? allHead.slice(0, 11) : allHead;
+    const fs = layout.fontSize / 12; // scale factor vs the default 12px
+    const B = layout.bold;
     let runningIndex = 0;
     for (let p = 0; p < pages; p++) {
       const isFirst = p === 0;
@@ -840,16 +843,16 @@ export default function ProformaApp() {
         s.addText(`${p + 1} / ${pages}`, { x: 10, y: 0.27, w: 3, h: 0.45, fontSize: 11, color: "FFFFFF", align: "right", valign: "middle" });
         tY = 0.95;
       }
-      const headerRow = head.map((h) => ({ text: h, options: { bold: true, color: "FFFFFF", fill: { color: ac }, align: "center", valign: "middle", fontSize: h.includes("\n") || h.length > 7 ? 7.5 : 9 } }));
+      const headerRow = head.map((h) => ({ text: h, options: { bold: true, color: "FFFFFF", fill: { color: ac }, align: "center", valign: "middle", fontSize: +(((h.includes("\n") || h.length > 7) ? 7.5 : 9) * fs).toFixed(1) } }));
       const slice = chunks[p];
       const tr: Parameters<typeof s.addTable>[0] = [headerRow as Parameters<typeof s.addTable>[0][number]];
       slice.forEach((r, idx) => {
         const gi = runningIndex + idx + 1;
-        const num = { align: "center" as const, valign: "middle" as const, bold: true, fontSize: 11 };
+        const num = { align: "center" as const, valign: "middle" as const, bold: true, fontSize: +(11 * fs).toFixed(1) };
         const fullRow = [
-          { text: String(gi), options: { ...num, fontSize: 10 } },
-          { text: r.itemName, options: { valign: "middle", bold: true, fontSize: invoiceOnly ? 9 : 10 } },
-          { text: r.description, options: { valign: "middle", fontSize: invoiceOnly ? 8.5 : 9.5 } },
+          { text: String(gi), options: { ...num, fontSize: +(10 * fs).toFixed(1) } },
+          { text: r.itemName, options: { valign: "middle", bold: true, fontSize: +((invoiceOnly ? 9 : 10) * fs).toFixed(1) } },
+          { text: r.description, options: { valign: "middle", bold: B, fontSize: +((invoiceOnly ? 8.5 : 9.5) * fs).toFixed(1) } },
           { text: "" }, { text: "" },
           { text: r.ctn, options: num }, { text: r.dozCtn, options: num },
           { text: r.setCtn, options: num }, { text: r.pcsSet, options: num },
