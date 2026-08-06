@@ -1195,13 +1195,100 @@ function CellInput({ value, onChange, type = "text", align = "center", readOnly 
 }
 function ImgCell({ src, onPick, icon }: { src: string; onPick: (f: File | null) => void; icon: "img"|"pkg" }) {
   const ref = useRef<HTMLInputElement>(null);
+  const [editSrc, setEditSrc] = useState<string | null>(null);
   return (
     <>
-      <button type="button" onClick={() => ref.current?.click()} className={`img-cell-btn mx-auto flex h-24 w-24 items-center justify-center overflow-hidden rounded border ${src ? "" : "border-dashed bg-muted/30"} hover:border-foreground`}>
+      <button type="button" onClick={() => (src ? setEditSrc(src) : ref.current?.click())} className={`img-cell-btn mx-auto flex h-24 w-24 items-center justify-center overflow-hidden rounded border ${src ? "" : "border-dashed bg-muted/30"} hover:border-foreground`}>
         {src ? <img src={src} crossOrigin="anonymous" alt="" className="h-full w-full object-contain" /> : icon === "img" ? <ImageIcon className="h-4 w-4 text-muted-foreground" /> : <Package className="h-4 w-4 text-muted-foreground" />}
       </button>
-      <input ref={ref} type="file" accept="image/*" className="hidden" onChange={(e) => onPick(e.target.files?.[0] ?? null)} />
+      <input
+        ref={ref}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={async (e) => {
+          const f = e.target.files?.[0];
+          e.target.value = "";
+          if (!f) return;
+          setEditSrc(await fileToDataURL(f));
+        }}
+      />
+      {editSrc && (
+        <ImageAdjuster
+          src={editSrc}
+          onPickFile={() => ref.current?.click()}
+          onCancel={() => setEditSrc(null)}
+          onDone={(file) => { setEditSrc(null); onPick(file); }}
+        />
+      )}
     </>
+  );
+}
+
+function ImageAdjuster({ src, onDone, onCancel, onPickFile }: { src: string; onDone: (f: File) => void; onCancel: () => void; onPickFile: () => void }) {
+  const BOX = 260;
+  const OUT = 900;
+  const [img, setImg] = useState<HTMLImageElement | null>(null);
+  const [scale, setScale] = useState(1);
+  const [off, setOff] = useState({ x: 0, y: 0 });
+  const drag = useRef<{ x: number; y: number; ox: number; oy: number } | null>(null);
+
+  useEffect(() => {
+    const i = new Image();
+    i.crossOrigin = "anonymous";
+    i.onload = () => { setImg(i); setScale(1); setOff({ x: 0, y: 0 }); };
+    i.src = src;
+  }, [src]);
+
+  const base = img ? Math.min(BOX / img.width, BOX / img.height) : 1;
+  const dw = img ? img.width * base * scale : 0;
+  const dh = img ? img.height * base * scale : 0;
+
+  const apply = () => {
+    if (!img) return;
+    const k = OUT / BOX;
+    const c = document.createElement("canvas");
+    c.width = OUT; c.height = OUT;
+    const ctx = c.getContext("2d")!;
+    ctx.imageSmoothingQuality = "high";
+    ctx.fillStyle = "#FFF"; ctx.fillRect(0, 0, OUT, OUT);
+    const w = dw * k, h = dh * k;
+    ctx.drawImage(img, (OUT - w) / 2 + off.x * k, (OUT - h) / 2 + off.y * k, w, h);
+    c.toBlob((b) => { if (b) onDone(new File([b], "image.jpg", { type: "image/jpeg" })); }, "image/jpeg", 0.85);
+  };
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-4" onClick={onCancel}>
+      <div className="w-full max-w-sm rounded-lg bg-background p-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-2 text-sm font-semibold">تحكم في الصورة / Adjust image</div>
+        <div
+          className="relative mx-auto overflow-hidden rounded border bg-white"
+          style={{ width: BOX, height: BOX, touchAction: "none", cursor: "grab" }}
+          onPointerDown={(e) => { (e.target as HTMLElement).setPointerCapture(e.pointerId); drag.current = { x: e.clientX, y: e.clientY, ox: off.x, oy: off.y }; }}
+          onPointerMove={(e) => { if (drag.current) setOff({ x: drag.current.ox + (e.clientX - drag.current.x), y: drag.current.oy + (e.clientY - drag.current.y) }); }}
+          onPointerUp={() => { drag.current = null; }}
+        >
+          {img && (
+            <img
+              src={src}
+              alt=""
+              draggable={false}
+              style={{ position: "absolute", left: (BOX - dw) / 2 + off.x, top: (BOX - dh) / 2 + off.y, width: dw, height: dh, maxWidth: "none" }}
+            />
+          )}
+        </div>
+        <div className="mt-3 flex items-center gap-2">
+          <span className="text-xs text-muted-foreground">تكبير</span>
+          <input type="range" min={0.3} max={3} step={0.01} value={scale} onChange={(e) => setScale(parseFloat(e.target.value))} className="flex-1" />
+        </div>
+        <div className="mt-3 flex flex-wrap justify-end gap-2">
+          <Button size="sm" variant="ghost" onClick={() => { setScale(1); setOff({ x: 0, y: 0 }); }}>إعادة ضبط</Button>
+          <Button size="sm" variant="outline" onClick={onPickFile}>تغيير الصورة</Button>
+          <Button size="sm" variant="outline" onClick={onCancel}>إلغاء</Button>
+          <Button size="sm" onClick={apply} disabled={!img}>حفظ</Button>
+        </div>
+      </div>
+    </div>
   );
 }
 function RowEditor({ index, row, accent, lang, lockCW = false, onChange, onImage, onPacking, onDuplicate, onRemove, onSend }:
