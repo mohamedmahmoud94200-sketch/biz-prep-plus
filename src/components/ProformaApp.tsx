@@ -1019,7 +1019,14 @@ export default function ProformaApp() {
           </div>
           {/* TABLE */}
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1300px] border-collapse text-[12px] print:min-w-0 print:text-[9px]" dir="ltr">
+            <table className="w-full min-w-[1300px] border-collapse print:min-w-0" dir="ltr"
+              style={{ tableLayout: "fixed", fontSize: `${layout.fontSize}px`, fontWeight: layout.bold ? 700 : undefined }}>
+              <colgroup>
+                {layout.widths.map((w, i) => (
+                  <col key={i} style={{ width: `${(w / layout.widths.reduce((a, b) => a + b, 0)) * 100}%` }} />
+                ))}
+                <col className="actions-col" style={{ width: "78px" }} />
+              </colgroup>
               <thead>
                 <tr style={{ background: `${accent}15`, color: accent }}>
                   {t.cols.map((h, ci) => {
