@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import {
   Plus, Trash2, FileDown, Presentation, Copy, Library, FilePlus, Palette, X,
   Package, Printer, ImageIcon, Send, Save, Languages, LogOut, Star, FileText,
-  Lock, LockOpen,
+  Lock, LockOpen, Sliders,
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -29,6 +29,21 @@ const LANG_KEY = "proforma-lang";
 const CACHE_KEY = "proforma-cache-lite-v6";
 const DELETED_CACHE_KEY = "proforma-deleted-v1";
 const OLD_CACHE_KEYS = ["proforma-cache-full-v4", "proforma-cache-full-v3"];
+const LAYOUT_KEY = "proforma_layout_v1";
+
+/* Table layout config: font size, bold, and per-column widths (relative units).
+   Order matches the 15 exported columns (Actions excluded — it never exports). */
+type LayoutCfg = { fontSize: number; bold: boolean; widths: number[] };
+const DEFAULT_WIDTHS = [38, 130, 140, 183, 183, 55, 60, 60, 58, 68, 74, 52, 60, 52, 60];
+const DEFAULT_LAYOUT: LayoutCfg = { fontSize: 12, bold: false, widths: DEFAULT_WIDTHS };
+const readLayout = (): LayoutCfg => {
+  if (typeof window === "undefined") return DEFAULT_LAYOUT;
+  try {
+    const raw = JSON.parse(localStorage.getItem(LAYOUT_KEY) || "null") as LayoutCfg | null;
+    if (!raw || !Array.isArray(raw.widths) || raw.widths.length !== 15) return DEFAULT_LAYOUT;
+    return { fontSize: raw.fontSize || 12, bold: !!raw.bold, widths: raw.widths.map((w) => Math.max(20, Math.min(400, Number(w) || 60))) };
+  } catch { return DEFAULT_LAYOUT; }
+};
 
 const T = {
   ar: {
@@ -304,6 +319,8 @@ export default function ProformaApp() {
   const [lang, setLang] = useState<Lang>(() => (typeof window !== "undefined" && (localStorage.getItem(LANG_KEY) as Lang)) || "ar");
   const [sendItem, setSendItem] = useState<Row | null>(null);
   const [lockCW, setLockCW] = useState<boolean>(() => (typeof window !== "undefined" && localStorage.getItem("proforma_lock_cw") === "1"));
+  const [layout, setLayout] = useState<LayoutCfg>(readLayout);
+  const [showLayout, setShowLayout] = useState(false);
   const logoRef = useRef<HTMLInputElement>(null);
   const dirtyIds = useRef<Set<string>>(new Set());
   const dirtyRowIds = useRef<Map<string, Set<string>>>(new Map());
@@ -409,6 +426,7 @@ export default function ProformaApp() {
 
   useEffect(() => { try { localStorage.setItem(LANG_KEY, lang); } catch {} }, [lang]);
   useEffect(() => { try { localStorage.setItem("proforma_lock_cw", lockCW ? "1" : "0"); } catch {} }, [lockCW]);
+  useEffect(() => { try { localStorage.setItem(LAYOUT_KEY, JSON.stringify(layout)); } catch {} }, [layout]);
 
   const active = proformas.find((p) => p.id === activeId) ?? proformas[0];
   const meta = active?.meta ?? defaultMeta();
@@ -792,12 +810,15 @@ export default function ProformaApp() {
       chunks.push(remaining.splice(0, cap));
     }
     const pages = chunks.length;
-    // Column widths must sum to table width (12.73)
-    const allColW = [0.38,1.30,1.40,1.83,1.83,0.55,0.60,0.60,0.58,0.68,0.74,0.52,0.60,0.52,0.60];
+    // Column widths come from the layout panel, normalized to the table width (12.73)
+    const norm = (arr: number[]) => { const s = arr.reduce((a, b) => a + b, 0) || 1; return arr.map((w) => +(w / s * 12.73).toFixed(3)); };
+    const allColW = norm(layout.widths);
     const allHead = ["No","Item Name","Description","Image","Packing","Ctn","Doz/\nCtn","Set/\nCtn","Pcs/\nSet","Price/\nSet","T.Amount","CBM","T.CBM","Weight","T.Weight"];
-    const invoiceColW = [0.5,1.3,1.45,1.65,1.6,0.85,1.0,1.0,0.95,1.25,1.18];
+    const invoiceColW = norm(layout.widths.slice(0, 11));
     const colW = invoiceOnly ? invoiceColW : allColW;
     const head = invoiceOnly ? allHead.slice(0, 11) : allHead;
+    const fs = layout.fontSize / 12; // scale factor vs the default 12px
+    const B = layout.bold;
     let runningIndex = 0;
     for (let p = 0; p < pages; p++) {
       const isFirst = p === 0;
@@ -822,16 +843,16 @@ export default function ProformaApp() {
         s.addText(`${p + 1} / ${pages}`, { x: 10, y: 0.27, w: 3, h: 0.45, fontSize: 11, color: "FFFFFF", align: "right", valign: "middle" });
         tY = 0.95;
       }
-      const headerRow = head.map((h) => ({ text: h, options: { bold: true, color: "FFFFFF", fill: { color: ac }, align: "center", valign: "middle", fontSize: h.includes("\n") || h.length > 7 ? 7.5 : 9 } }));
+      const headerRow = head.map((h) => ({ text: h, options: { bold: true, color: "FFFFFF", fill: { color: ac }, align: "center", valign: "middle", fontSize: +(((h.includes("\n") || h.length > 7) ? 7.5 : 9) * fs).toFixed(1) } }));
       const slice = chunks[p];
       const tr: Parameters<typeof s.addTable>[0] = [headerRow as Parameters<typeof s.addTable>[0][number]];
       slice.forEach((r, idx) => {
         const gi = runningIndex + idx + 1;
-        const num = { align: "center" as const, valign: "middle" as const, bold: true, fontSize: 11 };
+        const num = { align: "center" as const, valign: "middle" as const, bold: true, fontSize: +(11 * fs).toFixed(1) };
         const fullRow = [
-          { text: String(gi), options: { ...num, fontSize: 10 } },
-          { text: r.itemName, options: { valign: "middle", bold: true, fontSize: invoiceOnly ? 9 : 10 } },
-          { text: r.description, options: { valign: "middle", fontSize: invoiceOnly ? 8.5 : 9.5 } },
+          { text: String(gi), options: { ...num, fontSize: +(10 * fs).toFixed(1) } },
+          { text: r.itemName, options: { valign: "middle", bold: true, fontSize: +((invoiceOnly ? 9 : 10) * fs).toFixed(1) } },
+          { text: r.description, options: { valign: "middle", bold: B, fontSize: +((invoiceOnly ? 8.5 : 9.5) * fs).toFixed(1) } },
           { text: "" }, { text: "" },
           { text: r.ctn, options: num }, { text: r.dozCtn, options: num },
           { text: r.setCtn, options: num }, { text: r.pcsSet, options: num },
@@ -845,7 +866,7 @@ export default function ProformaApp() {
       // Adaptive row height so the table always ends above the totals/footer band
       const tableBottom = isLast ? 5.5 : 7.25;
       const rowH = Math.max(0.6, Math.min(1.7, (tableBottom - tY) / (slice.length + 1)));
-      s.addTable(tr, { x: 0.3, y: tY, w: 12.73, rowH, fontSize: 10, bold: true, border: { type: "solid", pt: 0.5, color: "E5E7EB" }, valign: "middle", colW });
+      s.addTable(tr, { x: 0.3, y: tY, w: 12.73, rowH, fontSize: +(10 * fs).toFixed(1), bold: true, border: { type: "solid", pt: 0.5, color: "E5E7EB" }, valign: "middle", colW });
       const overlay = (oc: number, src: string, ri: number) => {
         if (!src) return; let x = 0.3; for (let i = 0; i < oc; i++) x += colW[i];
         const cw = colW[oc]; const size = Math.min(rowH - 0.04, cw - 0.04);
@@ -932,6 +953,41 @@ export default function ProformaApp() {
               {lockCW ? <Lock className="mr-1 h-4 w-4" /> : <LockOpen className="mr-1 h-4 w-4" />} CBM / Weight
             </Button>
             <Button size="sm" variant="outline" onClick={onPrint}><Printer className="mr-1 h-4 w-4" /> {t.print}</Button>
+            <div className="relative">
+              <Button size="sm" variant={showLayout ? "default" : "outline"} onClick={() => setShowLayout((v) => !v)} title="Layout">
+                <Sliders className="mr-1 h-4 w-4" /> {lang === "ar" ? "التنسيق" : "Layout"}
+              </Button>
+              {showLayout && (
+                <div className="absolute end-0 z-30 mt-2 max-h-[70vh] w-80 overflow-y-auto rounded-md border bg-white p-3 shadow-lg" dir={dir}>
+                  <div className="mb-3 flex items-center gap-2">
+                    <span className="w-20 text-xs font-semibold">{lang === "ar" ? "حجم الخط" : "Font size"}</span>
+                    <input type="range" min={8} max={22} step={0.5} value={layout.fontSize}
+                      onChange={(e) => setLayout((l) => ({ ...l, fontSize: parseFloat(e.target.value) }))} className="flex-1" />
+                    <span className="w-10 text-end text-xs">{layout.fontSize}px</span>
+                  </div>
+                  <label className="mb-3 flex cursor-pointer items-center gap-2 text-xs font-semibold">
+                    <input type="checkbox" checked={layout.bold} onChange={(e) => setLayout((l) => ({ ...l, bold: e.target.checked }))} style={{ accentColor: accent }} />
+                    {lang === "ar" ? "خط عريض (Bold)" : "Bold text"}
+                  </label>
+                  <div className="mb-1 text-xs font-semibold">{lang === "ar" ? "عرض الأعمدة" : "Column widths"}</div>
+                  <div className="space-y-1.5">
+                    {layout.widths.map((w, i) => (
+                      <div key={i} className="flex items-center gap-2">
+                        <span className="w-20 truncate text-[11px] text-muted-foreground">{t.cols[i]}</span>
+                        <input type="range" min={20} max={320} step={2} value={w}
+                          onChange={(e) => setLayout((l) => { const ws = [...l.widths]; ws[i] = parseInt(e.target.value, 10); return { ...l, widths: ws }; })}
+                          className="flex-1" />
+                        <span className="w-8 text-end text-[11px]">{w}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-3 flex justify-between gap-2">
+                    <Button size="sm" variant="ghost" onClick={() => setLayout(DEFAULT_LAYOUT)}>{lang === "ar" ? "إعادة ضبط" : "Reset"}</Button>
+                    <Button size="sm" onClick={() => { setShowLayout(false); toast.success(lang === "ar" ? "تم حفظ التنسيق" : "Layout saved"); }}>{lang === "ar" ? "حفظ" : "Save"}</Button>
+                  </div>
+                </div>
+              )}
+            </div>
             <Button size="sm" onClick={() => exportPDF()} className="bg-sky-600 text-white hover:bg-sky-700"><FileDown className="mr-1 h-4 w-4" /> {t.pdf}</Button>
             <Button size="sm" onClick={() => exportPPTX()} className="bg-orange-500 text-white hover:bg-orange-600"><Presentation className="mr-1 h-4 w-4" /> {t.pptx}</Button>
             <Button size="sm" variant="outline" onClick={() => setShowInvoice(true)}><FileText className="mr-1 h-4 w-4" /> {t.createInvoice}</Button>
@@ -998,7 +1054,14 @@ export default function ProformaApp() {
           </div>
           {/* TABLE */}
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1300px] border-collapse text-[12px] print:min-w-0 print:text-[9px]" dir="ltr">
+            <table className="w-full min-w-[1300px] border-collapse print:min-w-0" dir="ltr"
+              style={{ tableLayout: "fixed", fontSize: `${layout.fontSize}px`, fontWeight: layout.bold ? 700 : undefined }}>
+              <colgroup>
+                {layout.widths.map((w, i) => (
+                  <col key={i} style={{ width: `${(w / layout.widths.reduce((a, b) => a + b, 0)) * 100}%` }} />
+                ))}
+                <col className="actions-col" style={{ width: "78px" }} />
+              </colgroup>
               <thead>
                 <tr style={{ background: `${accent}15`, color: accent }}>
                   {t.cols.map((h, ci) => {
@@ -1167,6 +1230,29 @@ export default function ProformaApp() {
           ::-webkit-scrollbar { display: none !important; }
         }
       `}</style>
+
+      {/* DYNAMIC LAYOUT CSS — mirrors the Layout panel into PDF capture + print */}
+      <style>{(() => {
+        const total = layout.widths.reduce((a, b) => a + b, 0) || 1;
+        const px = layout.widths.map((w) => Math.round((w / total) * 1560));
+        const fs = layout.fontSize;
+        const bold = layout.bold ? 700 : 500;
+        const cols = px.map((w, i) => `#printable.pdf-capture th:nth-child(${i + 1}), #printable.pdf-capture td:nth-child(${i + 1}) { width: ${w}px !important; max-width: ${w}px !important; }
+        @media print { #printable th:nth-child(${i + 1}), #printable td:nth-child(${i + 1}) { width: ${(w / 1560 * 100).toFixed(2)}% !important; max-width: none !important; } }`).join("\n");
+        return `
+        #printable.pdf-capture table { table-layout: fixed !important; }
+        #printable.pdf-capture td, #printable.pdf-capture td .cell-text { font-size: ${fs}px !important; font-weight: ${bold} !important; }
+        #printable.pdf-capture th { font-size: ${Math.max(7, fs - 2)}px !important; }
+        #printable.pdf-capture td:nth-child(n+6), #printable.pdf-capture td:nth-child(n+6) .cell-text { font-weight: 700 !important; font-size: ${fs}px !important; }
+        ${cols}
+        @media print {
+          #printable table { table-layout: fixed !important; }
+          #printable td, #printable td .cell-text, #printable td input { font-size: ${fs}px !important; font-weight: ${bold} !important; }
+          #printable th { font-size: ${Math.max(7, fs - 2)}px !important; }
+          #printable td:nth-child(n+6), #printable td:nth-child(n+6) .cell-text, #printable td:nth-child(n+6) input { font-weight: 700 !important; }
+        }
+        `;
+      })()}</style>
 
       {showCompany && (
         <CompanyModal meta={meta} accent={accent} lang={lang}
