@@ -953,6 +953,41 @@ export default function ProformaApp() {
               {lockCW ? <Lock className="mr-1 h-4 w-4" /> : <LockOpen className="mr-1 h-4 w-4" />} CBM / Weight
             </Button>
             <Button size="sm" variant="outline" onClick={onPrint}><Printer className="mr-1 h-4 w-4" /> {t.print}</Button>
+            <div className="relative">
+              <Button size="sm" variant={showLayout ? "default" : "outline"} onClick={() => setShowLayout((v) => !v)} title="Layout">
+                <Sliders className="mr-1 h-4 w-4" /> {lang === "ar" ? "التنسيق" : "Layout"}
+              </Button>
+              {showLayout && (
+                <div className="absolute end-0 z-30 mt-2 max-h-[70vh] w-80 overflow-y-auto rounded-md border bg-white p-3 shadow-lg" dir={dir}>
+                  <div className="mb-3 flex items-center gap-2">
+                    <span className="w-20 text-xs font-semibold">{lang === "ar" ? "حجم الخط" : "Font size"}</span>
+                    <input type="range" min={8} max={22} step={0.5} value={layout.fontSize}
+                      onChange={(e) => setLayout((l) => ({ ...l, fontSize: parseFloat(e.target.value) }))} className="flex-1" />
+                    <span className="w-10 text-end text-xs">{layout.fontSize}px</span>
+                  </div>
+                  <label className="mb-3 flex cursor-pointer items-center gap-2 text-xs font-semibold">
+                    <input type="checkbox" checked={layout.bold} onChange={(e) => setLayout((l) => ({ ...l, bold: e.target.checked }))} style={{ accentColor: accent }} />
+                    {lang === "ar" ? "خط عريض (Bold)" : "Bold text"}
+                  </label>
+                  <div className="mb-1 text-xs font-semibold">{lang === "ar" ? "عرض الأعمدة" : "Column widths"}</div>
+                  <div className="space-y-1.5">
+                    {layout.widths.map((w, i) => (
+                      <div key={i} className="flex items-center gap-2">
+                        <span className="w-20 truncate text-[11px] text-muted-foreground">{t.cols[i]}</span>
+                        <input type="range" min={20} max={320} step={2} value={w}
+                          onChange={(e) => setLayout((l) => { const ws = [...l.widths]; ws[i] = parseInt(e.target.value, 10); return { ...l, widths: ws }; })}
+                          className="flex-1" />
+                        <span className="w-8 text-end text-[11px]">{w}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-3 flex justify-between gap-2">
+                    <Button size="sm" variant="ghost" onClick={() => setLayout(DEFAULT_LAYOUT)}>{lang === "ar" ? "إعادة ضبط" : "Reset"}</Button>
+                    <Button size="sm" onClick={() => { setShowLayout(false); toast.success(lang === "ar" ? "تم حفظ التنسيق" : "Layout saved"); }}>{lang === "ar" ? "حفظ" : "Save"}</Button>
+                  </div>
+                </div>
+              )}
+            </div>
             <Button size="sm" onClick={() => exportPDF()} className="bg-sky-600 text-white hover:bg-sky-700"><FileDown className="mr-1 h-4 w-4" /> {t.pdf}</Button>
             <Button size="sm" onClick={() => exportPPTX()} className="bg-orange-500 text-white hover:bg-orange-600"><Presentation className="mr-1 h-4 w-4" /> {t.pptx}</Button>
             <Button size="sm" variant="outline" onClick={() => setShowInvoice(true)}><FileText className="mr-1 h-4 w-4" /> {t.createInvoice}</Button>
