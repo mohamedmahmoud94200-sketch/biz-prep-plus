@@ -1108,6 +1108,13 @@ export default function ProformaApp() {
         #printable.pdf-capture th:nth-child(13), #printable.pdf-capture td:nth-child(13),
         #printable.pdf-capture th:nth-child(14), #printable.pdf-capture td:nth-child(14),
         #printable.pdf-capture th:nth-child(15), #printable.pdf-capture td:nth-child(15) { width: 54px !important; max-width: 54px !important; font-size: 9px !important; }
+        /* Numbers: bold + slightly larger so the exported file reads clearly */
+        #printable.pdf-capture td:nth-child(n+6) .cell-text,
+        #printable.pdf-capture td:nth-child(n+6) { font-weight: 700 !important; font-size: 11px !important; }
+        #printable.pdf-capture td:nth-child(2) { font-weight: 600 !important; }
+        /* Images: keep the adjusted framing, just bigger */
+        #printable.pdf-capture .img-cell-btn { width: 120px !important; height: 120px !important; }
+        #printable.pdf-capture .img-cell-btn img { width: 100% !important; height: 100% !important; object-fit: contain !important; }
         /* Cap Item Name / Description so they don't dominate */
         #printable.pdf-capture th:nth-child(2), #printable.pdf-capture td:nth-child(2) { max-width: 180px !important; width: 180px !important; }
         #printable.pdf-capture th:nth-child(3), #printable.pdf-capture td:nth-child(3) { max-width: 220px !important; width: 220px !important; }
