@@ -29,6 +29,21 @@ const LANG_KEY = "proforma-lang";
 const CACHE_KEY = "proforma-cache-lite-v6";
 const DELETED_CACHE_KEY = "proforma-deleted-v1";
 const OLD_CACHE_KEYS = ["proforma-cache-full-v4", "proforma-cache-full-v3"];
+const LAYOUT_KEY = "proforma_layout_v1";
+
+/* Table layout config: font size, bold, and per-column widths (relative units).
+   Order matches the 15 exported columns (Actions excluded — it never exports). */
+type LayoutCfg = { fontSize: number; bold: boolean; widths: number[] };
+const DEFAULT_WIDTHS = [38, 130, 140, 183, 183, 55, 60, 60, 58, 68, 74, 52, 60, 52, 60];
+const DEFAULT_LAYOUT: LayoutCfg = { fontSize: 12, bold: false, widths: DEFAULT_WIDTHS };
+const readLayout = (): LayoutCfg => {
+  if (typeof window === "undefined") return DEFAULT_LAYOUT;
+  try {
+    const raw = JSON.parse(localStorage.getItem(LAYOUT_KEY) || "null") as LayoutCfg | null;
+    if (!raw || !Array.isArray(raw.widths) || raw.widths.length !== 15) return DEFAULT_LAYOUT;
+    return { fontSize: raw.fontSize || 12, bold: !!raw.bold, widths: raw.widths.map((w) => Math.max(20, Math.min(400, Number(w) || 60))) };
+  } catch { return DEFAULT_LAYOUT; }
+};
 
 const T = {
   ar: {
