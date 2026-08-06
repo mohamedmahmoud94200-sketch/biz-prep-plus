@@ -866,7 +866,7 @@ export default function ProformaApp() {
       // Adaptive row height so the table always ends above the totals/footer band
       const tableBottom = isLast ? 5.5 : 7.25;
       const rowH = Math.max(0.6, Math.min(1.7, (tableBottom - tY) / (slice.length + 1)));
-      s.addTable(tr, { x: 0.3, y: tY, w: 12.73, rowH, fontSize: 10, bold: true, border: { type: "solid", pt: 0.5, color: "E5E7EB" }, valign: "middle", colW });
+      s.addTable(tr, { x: 0.3, y: tY, w: 12.73, rowH, fontSize: +(10 * fs).toFixed(1), bold: true, border: { type: "solid", pt: 0.5, color: "E5E7EB" }, valign: "middle", colW });
       const overlay = (oc: number, src: string, ri: number) => {
         if (!src) return; let x = 0.3; for (let i = 0; i < oc; i++) x += colW[i];
         const cw = colW[oc]; const size = Math.min(rowH - 0.04, cw - 0.04);
