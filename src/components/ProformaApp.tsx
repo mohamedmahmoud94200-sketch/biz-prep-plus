@@ -770,10 +770,10 @@ export default function ProformaApp() {
     for (const src of Array.from(new Set(srcList))) resolved.set(src, await toDataUrl(src));
     const imgData = (src: string) => resolved.get(src) ?? src;
     const ac = themeColor;
-    const firstCap = 8; // slimmer header + adaptive row height fit more rows
-    const midCap = 9;
-    const firstLastCap = 7; // single slide: totals + footer take space
-    const midLastCap = 8;
+    const firstCap = 6; // fewer rows per slide ⇒ taller rows ⇒ bigger, clearer images
+    const midCap = 7;
+    const firstLastCap = 5; // single slide: totals + footer take space
+    const midLastCap = 6;
     // Distribute rows across slides (balanced, never leaves a near-empty slide)
     const chunks: Row[][] = [];
     const remaining = [...rows];
@@ -827,27 +827,28 @@ export default function ProformaApp() {
       const tr: Parameters<typeof s.addTable>[0] = [headerRow as Parameters<typeof s.addTable>[0][number]];
       slice.forEach((r, idx) => {
         const gi = runningIndex + idx + 1;
+        const num = { align: "center" as const, valign: "middle" as const, bold: true, fontSize: 11 };
         const fullRow = [
-          { text: String(gi), options: { align: "center", valign: "middle", bold: true } },
-          { text: r.itemName, options: { valign: "middle", fontSize: invoiceOnly ? 7.5 : 8.5 } },
-          { text: r.description, options: { valign: "middle", fontSize: invoiceOnly ? 7.5 : 8.5 } },
+          { text: String(gi), options: { ...num, fontSize: 10 } },
+          { text: r.itemName, options: { valign: "middle", bold: true, fontSize: invoiceOnly ? 9 : 10 } },
+          { text: r.description, options: { valign: "middle", fontSize: invoiceOnly ? 8.5 : 9.5 } },
           { text: "" }, { text: "" },
-          { text: r.ctn, options: { align: "center", bold: true } }, { text: r.dozCtn, options: { align: "center", bold: true } },
-          { text: r.setCtn, options: { align: "center", bold: true } }, { text: r.pcsSet, options: { align: "center", bold: true } },
-          { text: r.pricePerCtn, options: { align: "center", bold: true } },
-          { text: String(amount(r) || ""), options: { align: "center", bold: true } },
-          { text: r.cbm, options: { align: "center", bold: true } }, { text: String(tCbm(r) || ""), options: { align: "center", bold: true } },
-          { text: r.weight, options: { align: "center", bold: true } }, { text: String(tWeight(r) || ""), options: { align: "center", bold: true } },
+          { text: r.ctn, options: num }, { text: r.dozCtn, options: num },
+          { text: r.setCtn, options: num }, { text: r.pcsSet, options: num },
+          { text: r.pricePerCtn, options: num },
+          { text: String(amount(r) || ""), options: num },
+          { text: r.cbm, options: num }, { text: String(tCbm(r) || ""), options: num },
+          { text: r.weight, options: num }, { text: String(tWeight(r) || ""), options: num },
         ];
         tr.push((invoiceOnly ? fullRow.slice(0, 11) : fullRow) as Parameters<typeof s.addTable>[0][number]);
       });
       // Adaptive row height so the table always ends above the totals/footer band
       const tableBottom = isLast ? 5.5 : 7.25;
-      const rowH = Math.max(0.6, Math.min(1.2, (tableBottom - tY) / (slice.length + 1)));
-      s.addTable(tr, { x: 0.3, y: tY, w: 12.73, rowH, fontSize: 8.5, border: { type: "solid", pt: 0.5, color: "E5E7EB" }, valign: "middle", colW });
+      const rowH = Math.max(0.6, Math.min(1.7, (tableBottom - tY) / (slice.length + 1)));
+      s.addTable(tr, { x: 0.3, y: tY, w: 12.73, rowH, fontSize: 10, bold: true, border: { type: "solid", pt: 0.5, color: "E5E7EB" }, valign: "middle", colW });
       const overlay = (oc: number, src: string, ri: number) => {
         if (!src) return; let x = 0.3; for (let i = 0; i < oc; i++) x += colW[i];
-        const cw = colW[oc]; const size = Math.min(rowH - 0.06, cw - 0.06);
+        const cw = colW[oc]; const size = Math.min(rowH - 0.04, cw - 0.04);
         const y = tY + rowH + ri*rowH + (rowH - size) / 2;
         const cx = x + (cw-size)/2;
         try {
@@ -1107,6 +1108,13 @@ export default function ProformaApp() {
         #printable.pdf-capture th:nth-child(13), #printable.pdf-capture td:nth-child(13),
         #printable.pdf-capture th:nth-child(14), #printable.pdf-capture td:nth-child(14),
         #printable.pdf-capture th:nth-child(15), #printable.pdf-capture td:nth-child(15) { width: 54px !important; max-width: 54px !important; font-size: 9px !important; }
+        /* Numbers: bold + slightly larger so the exported file reads clearly */
+        #printable.pdf-capture td:nth-child(n+6) .cell-text,
+        #printable.pdf-capture td:nth-child(n+6) { font-weight: 700 !important; font-size: 11px !important; }
+        #printable.pdf-capture td:nth-child(2) { font-weight: 600 !important; }
+        /* Images: keep the adjusted framing, just bigger */
+        #printable.pdf-capture .img-cell-btn { width: 120px !important; height: 120px !important; }
+        #printable.pdf-capture .img-cell-btn img { width: 100% !important; height: 100% !important; object-fit: contain !important; }
         /* Cap Item Name / Description so they don't dominate */
         #printable.pdf-capture th:nth-child(2), #printable.pdf-capture td:nth-child(2) { max-width: 180px !important; width: 180px !important; }
         #printable.pdf-capture th:nth-child(3), #printable.pdf-capture td:nth-child(3) { max-width: 220px !important; width: 220px !important; }
