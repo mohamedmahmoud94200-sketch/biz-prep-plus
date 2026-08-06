@@ -319,6 +319,8 @@ export default function ProformaApp() {
   const [lang, setLang] = useState<Lang>(() => (typeof window !== "undefined" && (localStorage.getItem(LANG_KEY) as Lang)) || "ar");
   const [sendItem, setSendItem] = useState<Row | null>(null);
   const [lockCW, setLockCW] = useState<boolean>(() => (typeof window !== "undefined" && localStorage.getItem("proforma_lock_cw") === "1"));
+  const [layout, setLayout] = useState<LayoutCfg>(readLayout);
+  const [showLayout, setShowLayout] = useState(false);
   const logoRef = useRef<HTMLInputElement>(null);
   const dirtyIds = useRef<Set<string>>(new Set());
   const dirtyRowIds = useRef<Map<string, Set<string>>>(new Map());
