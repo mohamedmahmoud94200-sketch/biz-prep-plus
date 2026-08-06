@@ -1231,6 +1231,29 @@ export default function ProformaApp() {
         }
       `}</style>
 
+      {/* DYNAMIC LAYOUT CSS — mirrors the Layout panel into PDF capture + print */}
+      <style>{(() => {
+        const total = layout.widths.reduce((a, b) => a + b, 0) || 1;
+        const px = layout.widths.map((w) => Math.round((w / total) * 1560));
+        const fs = layout.fontSize;
+        const bold = layout.bold ? 700 : 500;
+        const cols = px.map((w, i) => `#printable.pdf-capture th:nth-child(${i + 1}), #printable.pdf-capture td:nth-child(${i + 1}) { width: ${w}px !important; max-width: ${w}px !important; }
+        @media print { #printable th:nth-child(${i + 1}), #printable td:nth-child(${i + 1}) { width: ${(w / 1560 * 100).toFixed(2)}% !important; max-width: none !important; } }`).join("\n");
+        return `
+        #printable.pdf-capture table { table-layout: fixed !important; }
+        #printable.pdf-capture td, #printable.pdf-capture td .cell-text { font-size: ${fs}px !important; font-weight: ${bold} !important; }
+        #printable.pdf-capture th { font-size: ${Math.max(7, fs - 2)}px !important; }
+        #printable.pdf-capture td:nth-child(n+6), #printable.pdf-capture td:nth-child(n+6) .cell-text { font-weight: 700 !important; font-size: ${fs}px !important; }
+        ${cols}
+        @media print {
+          #printable table { table-layout: fixed !important; }
+          #printable td, #printable td .cell-text, #printable td input { font-size: ${fs}px !important; font-weight: ${bold} !important; }
+          #printable th { font-size: ${Math.max(7, fs - 2)}px !important; }
+          #printable td:nth-child(n+6), #printable td:nth-child(n+6) .cell-text, #printable td:nth-child(n+6) input { font-weight: 700 !important; }
+        }
+        `;
+      })()}</style>
+
       {showCompany && (
         <CompanyModal meta={meta} accent={accent} lang={lang}
           onSave={(m) => { setMeta(m); setShowCompany(false); toast.success(lang === "ar" ? "تم الحفظ" : "Saved"); }}
