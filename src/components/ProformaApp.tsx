@@ -618,6 +618,19 @@ export default function ProformaApp() {
     const tWt = +rows.reduce((s, r) => s + tWeight(r), 0).toFixed(2);
     return { tCtn, tAmount, tCBM, tWt };
   }, [rows]);
+  const pageRows = useMemo(() => {
+    const pages: Row[][] = [];
+    let page: Row[] = [];
+    let used = 0;
+    const available = 430;
+    rows.forEach((row) => {
+      const height = layout.rowHeights[row.id] ?? 112;
+      if (page.length > 0 && used + height > available) { pages.push(page); page = []; used = 0; }
+      page.push(row); used += height;
+    });
+    if (page.length > 0 || pages.length === 0) pages.push(page);
+    return pages;
+  }, [rows, layout.rowHeights]);
 
   const updateRow = (id: string, patch: Partial<Row>) => {
     const targetId = activeId || active?.id;
@@ -753,200 +766,49 @@ export default function ProformaApp() {
 
   const fmtDate = (d: string) => { if (!d) return ""; const [y,m,da] = d.split("-"); return `${da}/${m}/${y}`; };
 
-  /* ───── PDF — capture #printable so Arabic & alignment match exactly ───── */
+  const capturePages = async (invoiceOnly = false, transport = 0) => {
+    const printable = document.getElementById("printable");
+    if (!printable) return [];
+    printable.classList.add("export-capture");
+    if (invoiceOnly) { printable.classList.add("invoice-capture"); setInvoiceTransport(transport); }
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const { default: html2canvas } = await import("html2canvas-pro");
+    const pages = Array.from(printable.querySelectorAll<HTMLElement>(".proforma-page"));
+    const canvases = [];
+    for (const page of pages) canvases.push(await html2canvas(page, { scale: 2, useCORS: true, backgroundColor: "#ffffff", logging: false }));
+    printable.classList.remove("export-capture", "invoice-capture");
+    if (invoiceOnly) setInvoiceTransport(null);
+    return canvases;
+  };
+
+  /* ───── PDF and PowerPoint use the exact same rendered preview pages ───── */
   const exportPDF = async (invoiceOnly = false, transport = 0) => {
-    const el = document.getElementById("printable");
-    if (!el) return;
     toast.message(lang === "ar" ? "بنحضّر الملف…" : "Preparing PDF…");
-    // Hide action column during capture
-    el.classList.add("pdf-capture");
-    if (invoiceOnly) {
-      el.classList.add("invoice-capture");
-      setInvoiceTransport(transport);
-      // wait two frames so React renders the extra totals cards before capture
-      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(null))));
-    }
     try {
-      const [{ default: html2canvas }, { default: jsPDF }] = await Promise.all([
-        import("html2canvas-pro"),
-        import("jspdf"),
-      ]);
-      const canvas = await html2canvas(el, {
-        scale: 2, useCORS: true, backgroundColor: "#ffffff", logging: false,
-      });
-      const imgData = canvas.toDataURL("image/jpeg", 0.95);
+      const [{ default: jsPDF }, canvases] = await Promise.all([import("jspdf"), capturePages(invoiceOnly, transport)]);
       const pdf = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
       const pageW = pdf.internal.pageSize.getWidth();
       const pageH = pdf.internal.pageSize.getHeight();
-      const margin = 18;
-      const imgW = pageW - margin * 2;
-      const imgH = (canvas.height * imgW) / canvas.width;
-      if (imgH <= pageH - margin * 2) {
-        pdf.addImage(imgData, "JPEG", margin, margin, imgW, imgH, undefined, "FAST");
-      } else {
-        // Multi-page slicing
-        const pageContentH = pageH - margin * 2;
-        const pxPerPt = canvas.width / imgW;
-        const sliceHeightPx = pageContentH * pxPerPt;
-        let renderedPx = 0;
-        while (renderedPx < canvas.height) {
-          const sliceCanvas = document.createElement("canvas");
-          sliceCanvas.width = canvas.width;
-          sliceCanvas.height = Math.min(sliceHeightPx, canvas.height - renderedPx);
-          const ctx = sliceCanvas.getContext("2d")!;
-          ctx.fillStyle = "#fff";
-          ctx.fillRect(0, 0, sliceCanvas.width, sliceCanvas.height);
-          ctx.drawImage(canvas, 0, renderedPx, canvas.width, sliceCanvas.height, 0, 0, canvas.width, sliceCanvas.height);
-          const sliceData = sliceCanvas.toDataURL("image/jpeg", 0.95);
-          const sliceImgH = (sliceCanvas.height * imgW) / sliceCanvas.width;
-          if (renderedPx > 0) pdf.addPage("a4", "landscape");
-          pdf.addImage(sliceData, "JPEG", margin, margin, imgW, sliceImgH, undefined, "FAST");
-          renderedPx += sliceCanvas.height;
-        }
-      }
+      canvases.forEach((canvas, index) => {
+        if (index > 0) pdf.addPage("a4", "landscape");
+        pdf.addImage(canvas.toDataURL("image/jpeg", 0.96), "JPEG", 0, 0, pageW, pageH, undefined, "FAST");
+      });
       pdf.save(`${invoiceOnly ? "Invoice" : (meta.title || "proforma")}-${meta.customer || "customer"}.pdf`);
       toast.success("PDF ✓");
     } catch (e) {
       console.error(e);
       toast.error(lang === "ar" ? "فشل التصدير" : "Export failed");
-    } finally {
-      el.classList.remove("pdf-capture");
-      el.classList.remove("invoice-capture");
-      if (invoiceOnly) setInvoiceTransport(null);
-    }
+    } finally { document.getElementById("printable")?.classList.remove("export-capture", "invoice-capture"); if (invoiceOnly) setInvoiceTransport(null); }
   };
 
   const exportPPTX = async (invoiceOnly = false, transport = 0) => {
     const { default: PptxGenJS } = await import("pptxgenjs");
     const pptx = new PptxGenJS(); pptx.layout = "LAYOUT_WIDE"; pptx.title = meta.title;
-    // PowerPoint needs embedded image data, so resolve any stored URLs first.
-    const srcList = [meta.logo, ...rows.flatMap((r) => [r.image, r.packing])].filter(Boolean);
-    const resolved = new Map<string, string>();
-    for (const src of Array.from(new Set(srcList))) resolved.set(src, await toDataUrl(src));
-    const imgData = (src: string) => resolved.get(src) ?? src;
-    const ac = themeColor;
-    const firstCap = 6; // fewer rows per slide ⇒ taller rows ⇒ bigger, clearer images
-    const midCap = 7;
-    const firstLastCap = 5; // single slide: totals + footer take space
-    const midLastCap = 6;
-    // Distribute rows across slides (balanced, never leaves a near-empty slide)
-    const chunks: Row[][] = [];
-    const remaining = [...rows];
-    if (remaining.length === 0) chunks.push([]);
-    while (remaining.length > 0) {
-      const isFirst = chunks.length === 0;
-      const cap = isFirst ? firstCap : midCap;
-      const lastCap = isFirst ? firstLastCap : midLastCap;
-      if (remaining.length <= lastCap) { chunks.push(remaining.splice(0)); break; }
-      if (remaining.length <= cap) {
-        // Needs a second slide for the totals/footer — split evenly instead of 1 + rest
-        const half = Math.min(cap, Math.ceil(remaining.length / 2));
-        chunks.push(remaining.splice(0, half));
-        continue;
-      }
-      chunks.push(remaining.splice(0, cap));
-    }
-    const pages = chunks.length;
-    // Column widths come from the layout panel, normalized to the table width (12.73)
-    const norm = (arr: number[]) => { const s = arr.reduce((a, b) => a + b, 0) || 1; return arr.map((w) => +(w / s * 12.73).toFixed(3)); };
-    const allColW = norm(layout.widths);
-    const allHead = ["No","Item Name","Description","Image","Packing","Ctn","Doz/\nCtn","Set/\nCtn","Pcs/\nSet","Price/\nSet","T.Amount","CBM","T.CBM","Weight","T.Weight"];
-    const invoiceColW = norm(layout.widths.slice(0, 11));
-    const colW = invoiceOnly ? invoiceColW : allColW;
-    const head = invoiceOnly ? allHead.slice(0, 11) : allHead;
-    const fs = layout.fontSize / 12; // scale factor vs the default 12px
-    const B = layout.bold;
-    let runningIndex = 0;
-    for (let p = 0; p < pages; p++) {
-      const isFirst = p === 0;
-      const isLast = p === pages - 1;
-      const s = pptx.addSlide(); s.background = { color: "FFFFFF" };
-      let tY: number;
-      if (isFirst) {
-        // Full header banner
-        s.addShape("roundRect", { x: 0.3, y: 0.2, w: 12.73, h: 0.9, fill: { color: ac }, line: { color: ac }, rectRadius: 0.08 });
-        s.addShape("roundRect", { x: 0.42, y: 0.29, w: 0.72, h: 0.72, fill: { color: "FFFFFF" }, line: { color: "FFFFFF" }, rectRadius: 0.05 });
-        if (meta.logo) { try { s.addImage({ data: imgData(meta.logo), x: 0.46, y: 0.33, w: 0.64, h: 0.64 }); } catch {} }
-        s.addText("proforma", { x: 8, y: 0.32, w: 4.6, h: 0.66, fontSize: 32, bold: true, color: "FFFFFF", align: "right", valign: "middle" });
-        s.addText("CUSTOMER", { x: 0.4, y: 1.18, w: 3, h: 0.18, fontSize: 8, color: "888888" });
-        s.addText("DATE", { x: 9.6, y: 1.18, w: 3, h: 0.18, fontSize: 8, color: "888888", align: "right" });
-        s.addText(meta.customer || "—", { x: 0.4, y: 1.34, w: 6, h: 0.3, fontSize: 14, bold: true, color: "222222" });
-        s.addText(fmtDate(meta.date), { x: 7, y: 1.34, w: 5.6, h: 0.3, fontSize: 14, bold: true, color: "222222", align: "right" });
-        tY = 1.78;
-      } else {
-        // Minimal slim header for continuation
-        s.addShape("rect", { x: 0.3, y: 0.25, w: 12.73, h: 0.5, fill: { color: ac }, line: { color: ac } });
-        s.addText(`${meta.title} — ${meta.customer || ""}`, { x: 0.4, y: 0.27, w: 9, h: 0.45, fontSize: 14, bold: true, color: "FFFFFF", valign: "middle" });
-        s.addText(`${p + 1} / ${pages}`, { x: 10, y: 0.27, w: 3, h: 0.45, fontSize: 11, color: "FFFFFF", align: "right", valign: "middle" });
-        tY = 0.95;
-      }
-      const headerRow = head.map((h) => ({ text: h, options: { bold: true, color: "FFFFFF", fill: { color: ac }, align: "center", valign: "middle", fontSize: +(((h.includes("\n") || h.length > 7) ? 7.5 : 9) * fs).toFixed(1) } }));
-      const slice = chunks[p];
-      const tr: Parameters<typeof s.addTable>[0] = [headerRow as Parameters<typeof s.addTable>[0][number]];
-      slice.forEach((r, idx) => {
-        const gi = runningIndex + idx + 1;
-        const num = { align: "center" as const, valign: "middle" as const, bold: true, fontSize: +(11 * fs).toFixed(1) };
-        const fullRow = [
-          { text: String(gi), options: { ...num, fontSize: +(10 * fs).toFixed(1) } },
-          { text: r.itemName, options: { valign: "middle", bold: true, fontSize: +((invoiceOnly ? 9 : 10) * fs).toFixed(1) } },
-          { text: r.description, options: { valign: "middle", bold: B, fontSize: +((invoiceOnly ? 8.5 : 9.5) * fs).toFixed(1) } },
-          { text: "" }, { text: "" },
-          { text: r.ctn, options: num }, { text: r.dozCtn, options: num },
-          { text: r.setCtn, options: num }, { text: r.pcsSet, options: num },
-          { text: r.pricePerCtn, options: num },
-          { text: String(amount(r) || ""), options: num },
-          { text: r.cbm, options: num }, { text: String(tCbm(r) || ""), options: num },
-          { text: r.weight, options: num }, { text: String(tWeight(r) || ""), options: num },
-        ];
-        tr.push((invoiceOnly ? fullRow.slice(0, 11) : fullRow) as Parameters<typeof s.addTable>[0][number]);
-      });
-      // Adaptive row height so the table always ends above the totals/footer band
-      const tableBottom = isLast ? 5.5 : 7.25;
-      const rowH = Math.max(0.6, Math.min(1.7, (tableBottom - tY) / (slice.length + 1)));
-      s.addTable(tr, { x: 0.3, y: tY, w: 12.73, rowH, fontSize: +(10 * fs).toFixed(1), bold: true, border: { type: "solid", pt: 0.5, color: "E5E7EB" }, valign: "middle", colW });
-      const overlay = (oc: number, src: string, ri: number) => {
-        if (!src) return; let x = 0.3; for (let i = 0; i < oc; i++) x += colW[i];
-        const cw = colW[oc]; const size = Math.min(rowH - 0.04, cw - 0.04);
-        const y = tY + rowH + ri*rowH + (rowH - size) / 2;
-        const cx = x + (cw-size)/2;
-        try {
-          s.addImage({ data: imgData(src), x: cx, y, w: size, h: size, sizing: { type: "contain", w: size, h: size } });
-        } catch {}
-      };
-      slice.forEach((r, idx) => { overlay(3, r.image, idx); overlay(4, r.packing, idx); });
-      runningIndex += slice.length;
-      if (isLast) {
-        const ch0 = 0.9, footerTop = 6.75;
-        const cardsTop = Math.min(tY + rowH * (slice.length + 1) + 0.5, footerTop - 0.2 - ch0);
-        const cY = cardsTop - 0.25;
-        const invTotal = +(totals.tAmount + (transport || 0)).toFixed(2);
-        const cards = invoiceOnly ? [
-          { l: "T.Ctn", v: String(totals.tCtn) },
-          { l: "T.Amount", v: String(totals.tAmount) },
-          { l: "Transport", v: String(transport || 0) },
-          { l: "Total", v: String(invTotal) },
-        ] : [
-          { l: "T.Ctn", v: String(totals.tCtn) }, { l: "T.CBM", v: totals.tCBM.toFixed(2) },
-          { l: "T.Weight", v: totals.tWt.toFixed(2) }, { l: "T.Amount", v: String(totals.tAmount) },
-        ];
-        const cw = 2.0, ch = ch0, gap = 0.15; let cx = 13.03 - (cw*cards.length + gap*(cards.length - 1));
-        // Note sits beside the totals cards (never overlapping the footer band)
-        const noteW = Math.max(2.2, cx - 0.3 - 0.2);
-        s.addText(`• ${meta.notes}`, { x: 0.3, y: cY + 0.25, w: noteW, h: ch, fontSize: 12, bold: true, color: "222222", align: "left", valign: "middle" });
-        cards.forEach((c) => {
-          s.addShape("roundRect", { x: cx, y: cY+0.25, w: cw, h: ch, fill: { color: "FFFFFF" }, line: { color: ac, width: 1 }, rectRadius: 0.05 });
-          s.addShape("rect", { x: cx+0.02, y: cY+0.27, w: cw-0.04, h: 0.28, fill: { color: ac }, line: { color: ac } });
-          s.addText(c.l, { x: cx, y: cY+0.27, w: cw, h: 0.28, fontSize: 10, bold: true, color: "FFFFFF", align: "center", valign: "middle" });
-          s.addText(c.v, { x: cx, y: cY+0.55, w: cw, h: ch-0.3, fontSize: 18, bold: true, color: "222222", align: "center", valign: "middle" });
-          cx += cw + gap;
-        });
-        // Footer (company contact) — only on last slide
-        s.addShape("roundRect", { x: 0.3, y: footerTop, w: 12.73, h: 0.65, fill: { color: ac }, line: { color: ac }, rectRadius: 0.08 });
-        s.addText(meta.address, { x: 0.4, y: footerTop+0.02, w: 12.5, h: 0.22, fontSize: 9, color: "FFFFFF", align: "center" });
-        s.addText(`tel: ${meta.phone}`, { x: 0.4, y: footerTop+0.22, w: 12.5, h: 0.18, fontSize: 8, color: "FFFFFF", align: "center" });
-        s.addText(`E-MAIL: ${meta.email}`, { x: 0.4, y: footerTop+0.40, w: 12.5, h: 0.18, fontSize: 8, color: "FFFFFF", align: "center" });
-      }
-    }
+    const canvases = await capturePages(invoiceOnly, transport);
+    canvases.forEach((canvas) => {
+      const slide = pptx.addSlide();
+      slide.addImage({ data: canvas.toDataURL("image/jpeg", 0.96), x: 0, y: 0, w: 13.333, h: 7.5 });
+    });
     await pptx.writeFile({ fileName: `${invoiceOnly ? "Invoice" : (meta.title || "proforma")}-${meta.customer || "customer"}.pptx` });
     toast.success("PPTX ✓");
   };
