@@ -331,8 +331,9 @@ export default function ProformaApp() {
   const [lang, setLang] = useState<Lang>(() => (typeof window !== "undefined" && (localStorage.getItem(LANG_KEY) as Lang)) || "ar");
   const [sendItem, setSendItem] = useState<Row | null>(null);
   const [lockCW, setLockCW] = useState<boolean>(() => (typeof window !== "undefined" && localStorage.getItem("proforma_lock_cw") === "1"));
-  const [layout, setLayout] = useState<LayoutCfg>(readLayout);
   const [showLayout, setShowLayout] = useState(false);
+  const [selectedCell, setSelectedCell] = useState<{ rowId: string; col: number } | null>(null);
+  const [selectedColumn, setSelectedColumn] = useState<number | null>(null);
   const logoRef = useRef<HTMLInputElement>(null);
   const dirtyIds = useRef<Set<string>>(new Set());
   const dirtyRowIds = useRef<Map<string, Set<string>>>(new Map());
@@ -438,13 +439,16 @@ export default function ProformaApp() {
 
   useEffect(() => { try { localStorage.setItem(LANG_KEY, lang); } catch {} }, [lang]);
   useEffect(() => { try { localStorage.setItem("proforma_lock_cw", lockCW ? "1" : "0"); } catch {} }, [lockCW]);
-  useEffect(() => { try { localStorage.setItem(LAYOUT_KEY, JSON.stringify(layout)); } catch {} }, [layout]);
-
   const active = proformas.find((p) => p.id === activeId) ?? proformas[0];
   const meta = active?.meta ?? defaultMeta();
   const rows = active?.rows ?? [];
+  const layout = normalizeLayout(meta.layout);
   const themeColor = active?.themeColor ?? "2BB39B";
   const accent = `#${themeColor}`;
+  const setLayout = (next: LayoutCfg | ((current: LayoutCfg) => LayoutCfg)) => {
+    const updated = typeof next === "function" ? next(layout) : next;
+    setMeta({ ...meta, layout: normalizeLayout(updated) });
+  };
 
   /* ----- save logic ----- */
   const flushSave = useCallback(async () => {
@@ -621,6 +625,27 @@ export default function ProformaApp() {
     setProformas((ps) => ps.map((p) => p.id === targetId ? { ...p, rows: p.rows.map((r) => (r.id === id ? { ...r, ...patch } : r)) } : p));
     markRowsDirty(targetId, [id], "image" in patch || "packing" in patch);
   };
+  const changeColumnWidth = (index: number, delta: number) => {
+    setLayout((current) => {
+      const widths = [...current.widths];
+      widths[index] = Math.max(24, Math.min(420, widths[index] + delta));
+      return { ...current, widths };
+    });
+  };
+  const setRowHeight = (rowId: string, height: number) => setLayout((current) => ({
+    ...current, rowHeights: { ...current.rowHeights, [rowId]: Math.max(72, Math.min(260, height)) },
+  }));
+  const setSelectionFormat = (patch: TextFormat) => setLayout((current) => {
+    if (selectedCell) {
+      const key = `${selectedCell.rowId}:${selectedCell.col}`;
+      return { ...current, cellStyles: { ...current.cellStyles, [key]: { ...current.cellStyles[key], ...patch } } };
+    }
+    if (selectedColumn !== null) {
+      const columnStyles = current.columnStyles.map((style, index) => index === selectedColumn ? { ...style, ...patch } : style);
+      return { ...current, columnStyles };
+    }
+    return { ...current, ...patch };
+  });
   const removeRow = (id: string) => {
     const row = rows.find((r) => r.id === id);
     if (!confirm(lang === "ar" ? `تأكيد حذف المنتج ${row?.itemName || ""}؟` : `Delete ${row?.itemName || "this item"}?`)) return;
