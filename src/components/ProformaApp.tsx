@@ -15,9 +15,20 @@ type Row = {
   ctn: string; dozCtn: string; setCtn: string; pcsSet: string; pricePerCtn: string;
   cbm: string; weight: string;
 };
+type TextFormat = { fontSize?: number; bold?: boolean };
+type LayoutCfg = {
+  fontSize: number;
+  bold: boolean;
+  widths: number[];
+  zoom: number;
+  rowHeights: Record<string, number>;
+  columnStyles: TextFormat[];
+  cellStyles: Record<string, TextFormat>;
+};
 type Meta = {
   company: string; address: string; phone: string; email: string;
   customer: string; date: string; title: string; notes: string; logo: string;
+  layout?: LayoutCfg;
 };
 type Proforma = {
   id: string; name: string; meta: Meta; rows: Row[]; themeColor: string; sortOrder: number; isPrimary?: boolean;
@@ -29,20 +40,20 @@ const LANG_KEY = "proforma-lang";
 const CACHE_KEY = "proforma-cache-lite-v6";
 const DELETED_CACHE_KEY = "proforma-deleted-v1";
 const OLD_CACHE_KEYS = ["proforma-cache-full-v4", "proforma-cache-full-v3"];
-const LAYOUT_KEY = "proforma_layout_v1";
-
-/* Table layout config: font size, bold, and per-column widths (relative units).
-   Order matches the 15 exported columns (Actions excluded — it never exports). */
-type LayoutCfg = { fontSize: number; bold: boolean; widths: number[] };
 const DEFAULT_WIDTHS = [38, 130, 140, 183, 183, 55, 60, 60, 58, 68, 74, 52, 60, 52, 60];
-const DEFAULT_LAYOUT: LayoutCfg = { fontSize: 12, bold: false, widths: DEFAULT_WIDTHS };
-const readLayout = (): LayoutCfg => {
-  if (typeof window === "undefined") return DEFAULT_LAYOUT;
-  try {
-    const raw = JSON.parse(localStorage.getItem(LAYOUT_KEY) || "null") as LayoutCfg | null;
-    if (!raw || !Array.isArray(raw.widths) || raw.widths.length !== 15) return DEFAULT_LAYOUT;
-    return { fontSize: raw.fontSize || 12, bold: !!raw.bold, widths: raw.widths.map((w) => Math.max(20, Math.min(400, Number(w) || 60))) };
-  } catch { return DEFAULT_LAYOUT; }
+const DEFAULT_LAYOUT: LayoutCfg = { fontSize: 12, bold: false, widths: DEFAULT_WIDTHS, zoom: 100, rowHeights: {}, columnStyles: Array.from({ length: 15 }, () => ({})), cellStyles: {} };
+const normalizeLayout = (raw: unknown): LayoutCfg => {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return { ...DEFAULT_LAYOUT, widths: [...DEFAULT_WIDTHS], columnStyles: Array.from({ length: 15 }, () => ({})) };
+  const value = raw as Partial<LayoutCfg>;
+  const widths = Array.isArray(value.widths) && value.widths.length === 15 ? value.widths : DEFAULT_WIDTHS;
+  const columnStyles = Array.isArray(value.columnStyles) && value.columnStyles.length === 15 ? value.columnStyles : Array.from({ length: 15 }, () => ({}));
+  return {
+    fontSize: Math.max(8, Math.min(22, Number(value.fontSize) || 12)), bold: !!value.bold,
+    widths: widths.map((w) => Math.max(24, Math.min(420, Number(w) || 60))),
+    zoom: Math.max(55, Math.min(120, Number(value.zoom) || 100)),
+    rowHeights: value.rowHeights && typeof value.rowHeights === "object" ? value.rowHeights : {},
+    columnStyles, cellStyles: value.cellStyles && typeof value.cellStyles === "object" ? value.cellStyles : {},
+  };
 };
 
 const T = {
@@ -89,7 +100,7 @@ const defaultMeta = (): Meta => ({
   phone: "00201272883314  -  002012​1265982",
   email: "sales@koujanegypt.com  /  info@koujanegypt.com",
   customer: "", date: new Date().toISOString().slice(0,10),
-  title: "Proforma Invoice", notes: "Prices are E.X work", logo: getDefaultLogo(),
+  title: "Proforma Invoice", notes: "Prices are E.X work", logo: getDefaultLogo(), layout: normalizeLayout(null),
 });
 const THEME_PRESETS = [
   { name:"Emerald", color:"2BB39B" }, { name:"Navy", color:"1E3A8A" },
@@ -146,6 +157,7 @@ const normalizeMeta = (value: unknown): Meta => {
     title: typeof src.title === "string" ? src.title : base.title,
     notes: typeof src.notes === "string" ? src.notes : base.notes,
     logo: typeof src.logo === "string" ? src.logo : base.logo,
+    layout: normalizeLayout(src.layout),
   };
 };
 
