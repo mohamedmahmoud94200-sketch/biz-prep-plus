@@ -999,10 +999,10 @@ export default function ProformaApp() {
                           </span>
                         ) : h}
                         {ci < 15 && <span className="column-resizer absolute -right-1 top-0 z-10 h-full w-2 cursor-col-resize" onPointerDown={(event) => {
-                          event.preventDefault(); const start = event.clientX;
-                          const move = (e: PointerEvent) => changeColumnWidth(ci, e.clientX - start);
+                          event.preventDefault(); let last = event.clientX;
+                          const move = (e: PointerEvent) => { changeColumnWidth(ci, e.clientX - last); last = e.clientX; };
                           const up = () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); };
-                          window.addEventListener("pointermove", move, { once: true }); window.addEventListener("pointerup", up);
+                          window.addEventListener("pointermove", move); window.addEventListener("pointerup", up);
                         }} />}
                       </th>
                     );
@@ -1320,35 +1320,48 @@ function ImageAdjuster({ src, onDone, onCancel, onPickFile }: { src: string; onD
     </div>
   );
 }
-function RowEditor({ index, row, accent, lang, lockCW = false, onChange, onImage, onPacking, onDuplicate, onRemove, onSend }:
+function RowEditor({ index, row, accent, lang, lockCW = false, height, columnStyles, cellStyles, selectedCell, onSelectCell, onHeightChange, onChange, onImage, onPacking, onDuplicate, onRemove, onSend }:
   { index: number; row: Row; accent: string; lang: Lang; lockCW?: boolean;
+    height: number; columnStyles: TextFormat[]; cellStyles: Record<string, TextFormat>; selectedCell: { rowId: string; col: number } | null;
+    onSelectCell: (col: number) => void; onHeightChange: (height: number) => void;
     onChange: (p: Partial<Row>) => void; onImage: (f: File | null) => void; onPacking: (f: File | null) => void;
     onDuplicate: () => void; onRemove: () => void; onSend: () => void; }) {
   const amt = amount(row); const tc = tCbm(row); const tw = tWeight(row);
   const tt = T[lang];
+  const styleFor = (col: number): CSSProperties => {
+    const style = { ...columnStyles[col], ...cellStyles[`${row.id}:${col}`] };
+    return { fontSize: style.fontSize ? `${style.fontSize}px` : undefined, fontWeight: style.bold === true ? 700 : style.bold === false ? 400 : undefined };
+  };
+  const cellClass = (col: number) => selectedCell?.rowId === row.id && selectedCell.col === col ? "ring-2 ring-inset ring-foreground/40" : "";
   return (
-    <tr className="border-b align-middle hover:bg-muted/20">
-      <td className="w-10 px-2 text-center text-xs font-semibold text-muted-foreground">{index}</td>
-      <td className="px-2"><CellInput value={row.itemName} onChange={(v) => onChange({ itemName: v })} align="left" /></td>
-      <td className="px-2"><CellInput value={row.description} onChange={(v) => onChange({ description: v })} align="left" /></td>
-      <td className="w-28 px-1"><ImgCell src={row.image} onPick={onImage} icon="img" /></td>
-      <td className="w-28 px-1"><ImgCell src={row.packing} onPick={onPacking} icon="pkg" /></td>
-      <td className="w-14 px-1"><CellInput value={row.ctn} onChange={(v) => onChange({ ctn: v })} type="number" /></td>
-      <td className="w-14 px-1"><CellInput value={row.dozCtn} onChange={(v) => onChange({ dozCtn: v })} /></td>
-      <td className="w-14 px-1"><CellInput value={row.setCtn} onChange={(v) => onChange({ setCtn: v })} /></td>
-      <td className="w-14 px-1"><CellInput value={row.pcsSet} onChange={(v) => onChange({ pcsSet: v })} /></td>
-      <td className="w-16 px-1"><CellInput value={row.pricePerCtn} onChange={(v) => onChange({ pricePerCtn: v })} type="number" /></td>
-      <td className="w-16 px-1 text-center text-[12px] font-bold" style={{ color: accent }}>{amt || ""}</td>
-      <td className="w-32 px-1"><CellInput value={row.cbm} onChange={(v) => onChange({ cbm: v })} type="number" readOnly={lockCW} /></td>
-      <td className="w-32 px-1 text-center text-[12px] font-semibold">{tc || ""}</td>
-      <td className="w-24 px-1"><CellInput value={row.weight} onChange={(v) => onChange({ weight: v })} type="number" readOnly={lockCW} /></td>
-      <td className="w-24 px-1 text-center text-[12px] font-semibold">{tw || ""}</td>
-      <td className="w-24 px-1 print:hidden">
+    <tr className="relative border-b align-middle hover:bg-muted/20" style={{ height }}>
+      <td onClick={() => onSelectCell(0)} className={`px-1 text-center text-xs font-semibold text-muted-foreground ${cellClass(0)}`} style={styleFor(0)}>{index}</td>
+      <td onClick={() => onSelectCell(1)} className={`px-1 ${cellClass(1)}`} style={styleFor(1)}><CellInput value={row.itemName} onChange={(v) => onChange({ itemName: v })} align="left" /></td>
+      <td onClick={() => onSelectCell(2)} className={`px-1 ${cellClass(2)}`} style={styleFor(2)}><CellInput value={row.description} onChange={(v) => onChange({ description: v })} align="left" /></td>
+      <td onClick={() => onSelectCell(3)} className={`px-1 ${cellClass(3)}`} style={styleFor(3)}><ImgCell src={row.image} onPick={onImage} icon="img" /></td>
+      <td onClick={() => onSelectCell(4)} className={`px-1 ${cellClass(4)}`} style={styleFor(4)}><ImgCell src={row.packing} onPick={onPacking} icon="pkg" /></td>
+      <td onClick={() => onSelectCell(5)} className={`px-1 ${cellClass(5)}`} style={styleFor(5)}><CellInput value={row.ctn} onChange={(v) => onChange({ ctn: v })} type="number" /></td>
+      <td onClick={() => onSelectCell(6)} className={`px-1 ${cellClass(6)}`} style={styleFor(6)}><CellInput value={row.dozCtn} onChange={(v) => onChange({ dozCtn: v })} /></td>
+      <td onClick={() => onSelectCell(7)} className={`px-1 ${cellClass(7)}`} style={styleFor(7)}><CellInput value={row.setCtn} onChange={(v) => onChange({ setCtn: v })} /></td>
+      <td onClick={() => onSelectCell(8)} className={`px-1 ${cellClass(8)}`} style={styleFor(8)}><CellInput value={row.pcsSet} onChange={(v) => onChange({ pcsSet: v })} /></td>
+      <td onClick={() => onSelectCell(9)} className={`px-1 ${cellClass(9)}`} style={styleFor(9)}><CellInput value={row.pricePerCtn} onChange={(v) => onChange({ pricePerCtn: v })} type="number" /></td>
+      <td onClick={() => onSelectCell(10)} className={`px-1 text-center font-bold ${cellClass(10)}`} style={{ ...styleFor(10), color: accent }}>{amt || ""}</td>
+      <td onClick={() => onSelectCell(11)} className={`px-1 ${cellClass(11)}`} style={styleFor(11)}><CellInput value={row.cbm} onChange={(v) => onChange({ cbm: v })} type="number" readOnly={lockCW} /></td>
+      <td onClick={() => onSelectCell(12)} className={`px-1 text-center font-semibold ${cellClass(12)}`} style={styleFor(12)}>{tc || ""}</td>
+      <td onClick={() => onSelectCell(13)} className={`px-1 ${cellClass(13)}`} style={styleFor(13)}><CellInput value={row.weight} onChange={(v) => onChange({ weight: v })} type="number" readOnly={lockCW} /></td>
+      <td onClick={() => onSelectCell(14)} className={`px-1 text-center font-semibold ${cellClass(14)}`} style={styleFor(14)}>{tw || ""}</td>
+      <td className="actions-col px-1 print:hidden">
         <div className="flex justify-center gap-1">
           <button onClick={onSend} title={tt.sendTo} className="rounded p-1 hover:bg-muted" style={{ color: accent }}><Send className="h-3.5 w-3.5" /></button>
           <button onClick={onDuplicate} title={tt.duplicate} className="rounded p-1 hover:bg-muted"><Copy className="h-3.5 w-3.5" /></button>
           <button onClick={onRemove} title={tt.delete} className="rounded p-1 text-destructive hover:bg-destructive/10"><Trash2 className="h-3.5 w-3.5" /></button>
         </div>
+        <span className="row-resizer absolute bottom-0 left-0 h-2 w-full cursor-row-resize" onPointerDown={(event) => {
+          event.preventDefault(); const start = event.clientY; const initial = height;
+          const move = (e: PointerEvent) => onHeightChange(initial + e.clientY - start);
+          const up = () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); };
+          window.addEventListener("pointermove", move); window.addEventListener("pointerup", up);
+        }} />
       </td>
     </tr>
   );
