@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import {
   Plus, Trash2, FileDown, Presentation, Copy, Library, FilePlus, Palette, X,
   Package, Printer, ImageIcon, Send, Save, Languages, LogOut, Star, FileText,
-  Lock, LockOpen, Sliders,
+  Lock, LockOpen, Sliders, Sheet,
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -813,6 +813,45 @@ export default function ProformaApp() {
     toast.success("PPTX ✓");
   };
 
+  const exportExcel = async () => {
+    toast.message(lang === "ar" ? "بنحضّر ملف إكسل…" : "Preparing Excel…");
+    try {
+      const { default: ExcelJS } = await import("exceljs");
+      const workbook = new ExcelJS.Workbook();
+      const sheet = workbook.addWorksheet((active.name || "Proforma").slice(0, 31), { pageSetup: { orientation: "landscape", fitToPage: true, fitToWidth: 1 } });
+      const heads = T.en.cols.slice(0, 15);
+      sheet.addRow(heads);
+      sheet.getRow(1).height = 30;
+      sheet.getRow(1).eachCell((cell) => { cell.font = { bold: true, color: { argb: "FFFFFFFF" } }; cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: `FF${themeColor}` } }; cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true }; });
+      sheet.columns = layout.widths.map((width) => ({ width: Math.max(5, width / 7) }));
+      for (let index = 0; index < rows.length; index++) {
+        const row = rows[index];
+        const excelRow = sheet.addRow([index + 1, row.itemName, row.description, "", "", row.ctn, row.dozCtn, row.setCtn, row.pcsSet, row.pricePerCtn, amount(row) || "", row.cbm, tCbm(row) || "", row.weight, tWeight(row) || ""]);
+        excelRow.height = Math.max(55, (layout.rowHeights[row.id] ?? 112) * 0.75);
+        excelRow.eachCell((cell, column) => {
+          const style = { ...layout.columnStyles[column - 1], ...layout.cellStyles[`${row.id}:${column - 1}`] };
+          cell.font = { name: "Arial", size: style.fontSize ?? layout.fontSize, bold: style.bold ?? layout.bold };
+          cell.alignment = { horizontal: column === 2 || column === 3 ? "left" : "center", vertical: "middle", wrapText: true };
+          cell.border = { top: { style: "thin", color: { argb: "FFE5E7EB" } }, left: { style: "thin", color: { argb: "FFE5E7EB" } }, bottom: { style: "thin", color: { argb: "FFE5E7EB" } }, right: { style: "thin", color: { argb: "FFE5E7EB" } } };
+        });
+        for (const [column, src] of [[4, row.image], [5, row.packing]] as const) {
+          if (!src) continue;
+          const data = await toDataUrl(src);
+          const comma = data.indexOf(",");
+          if (comma < 0) continue;
+          const extension = data.slice(0, comma).includes("png") ? "png" : "jpeg";
+          const imageId = workbook.addImage({ base64: data.slice(comma + 1), extension });
+          sheet.addImage(imageId, { tl: { col: column - 1 + 0.08, row: index + 1 + 0.08 }, br: { col: column - 0.08, row: index + 1.92 }, editAs: "oneCell" });
+        }
+      }
+      const buffer = await workbook.xlsx.writeBuffer();
+      const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a"); anchor.href = url; anchor.download = `${meta.title || "proforma"}-${meta.customer || "customer"}.xlsx`; anchor.click(); URL.revokeObjectURL(url);
+      toast.success("Excel ✓");
+    } catch (error) { console.error(error); toast.error(lang === "ar" ? "فشل تنزيل إكسل" : "Excel export failed"); }
+  };
+
   const onPrint = () => { setTimeout(() => window.print(), 100); };
   const onSaveNow = async () => { await flushSave(); toast.success(lang === "ar" ? "تم الحفظ" : "Saved"); };
   const onLogout = async () => { await supabase.auth.signOut(); navigate({ to: "/auth" }); };
@@ -910,6 +949,7 @@ export default function ProformaApp() {
             </div>
             <Button size="sm" onClick={() => exportPDF()} className="bg-sky-600 text-white hover:bg-sky-700"><FileDown className="mr-1 h-4 w-4" /> {t.pdf}</Button>
             <Button size="sm" onClick={() => exportPPTX()} className="bg-orange-500 text-white hover:bg-orange-600"><Presentation className="mr-1 h-4 w-4" /> {t.pptx}</Button>
+            <Button size="sm" onClick={exportExcel} className="bg-emerald-700 text-white hover:bg-emerald-800"><Sheet className="mr-1 h-4 w-4" /> Excel</Button>
             <Button size="sm" variant="outline" onClick={() => setShowInvoice(true)}><FileText className="mr-1 h-4 w-4" /> {t.createInvoice}</Button>
             <Button size="sm" onClick={createProforma} className="bg-purple-600 text-white hover:bg-purple-700"><FilePlus className="mr-1 h-4 w-4" /> {t.newInvoice}</Button>
             <Button size="sm" onClick={addRow} className="text-white hover:opacity-90" style={{ background: accent }}><Plus className="mr-1 h-4 w-4" /> {t.addItem}</Button>
@@ -1079,17 +1119,15 @@ export default function ProformaApp() {
       {/* PRINT CSS */}
       <style>{`
         @page { size: A4 landscape; margin: 6mm; }
-        /* Hide the Actions column when generating PDF via html2canvas */
-        #printable.pdf-capture th:last-child,
-        #printable.pdf-capture td:last-child { display: none !important; }
+        /* Client-only Actions are never included in exported files */
+        #printable.export-capture .actions-col { display: none !important; }
         /* When capturing for PDF, swap inputs -> plain text, drop borders */
-        #printable.pdf-capture .cell-input { display: none !important; }
-        #printable.pdf-capture .cell-text { display: block !important; }
-        #printable.pdf-capture .img-cell-btn { border-color: transparent !important; background: transparent !important; }
-        #printable.pdf-capture input { border: none !important; background: transparent !important; box-shadow: none !important; }
-        #printable.pdf-capture { width: 1600px !important; }
-        #printable.pdf-capture .overflow-x-auto { overflow: visible !important; }
-        #printable.pdf-capture table { table-layout: auto !important; min-width: 100% !important; width: 100% !important; }
+        #printable.export-capture { zoom: 100% !important; gap: 0 !important; }
+        #printable.export-capture .proforma-page { box-shadow: none !important; }
+        #printable.export-capture .cell-input { display: none !important; }
+        #printable.export-capture .cell-text { display: block !important; }
+        #printable.export-capture .img-cell-btn { border-color: transparent !important; background: transparent !important; }
+        #printable.export-capture input { border: none !important; background: transparent !important; box-shadow: none !important; }
         #printable.pdf-capture td { word-break: break-word; white-space: normal !important; vertical-align: middle !important; padding: 4px 3px !important; }
         #printable.pdf-capture th { white-space: normal !important; padding: 6px 2px !important; font-size: 10px !important; line-height: 1.1 !important; }
         /* Narrow numeric columns: Ctn, Doz/Ctn, Set/Ctn, Pcs/Set, Price/Set */
@@ -1152,7 +1190,7 @@ export default function ProformaApp() {
           #printable table { min-width: 0 !important; }
           #printable td, #printable th { white-space: normal !important; word-break: break-word; vertical-align: middle; }
           #printable .img-cell-btn { border-color: transparent !important; background: transparent !important; }
-          #printable th:last-child, #printable td:last-child { display: none !important; }
+          #printable .actions-col { display: none !important; }
           #printable input { border: none !important; background: transparent !important; padding: 0 !important; box-shadow: none !important; }
           #printable .footer-input { display: none !important; }
           #printable .footer-text { display: block !important; color: #ffffff !important; }
@@ -1166,14 +1204,14 @@ export default function ProformaApp() {
         }
       `}</style>
 
-      {/* DYNAMIC LAYOUT CSS — mirrors the Layout panel into PDF capture + print */}
+      {/* DYNAMIC LAYOUT CSS */}
       <style>{(() => {
         const total = layout.widths.reduce((a, b) => a + b, 0) || 1;
-        const px = layout.widths.map((w) => Math.round((w / total) * 1560));
+        const px = layout.widths.map((w) => Math.round((w / total) * 1053));
         const fs = layout.fontSize;
         const bold = layout.bold ? 700 : 500;
-        const cols = px.map((w, i) => `#printable.pdf-capture th:nth-child(${i + 1}), #printable.pdf-capture td:nth-child(${i + 1}) { width: ${w}px !important; max-width: ${w}px !important; }
-        @media print { #printable th:nth-child(${i + 1}), #printable td:nth-child(${i + 1}) { width: ${(w / 1560 * 100).toFixed(2)}% !important; max-width: none !important; } }`).join("\n");
+        const cols = px.map((w, i) => `#printable.export-capture th:nth-child(${i + 1}), #printable.export-capture td:nth-child(${i + 1}) { width: ${w}px !important; max-width: ${w}px !important; }
+        @media print { #printable th:nth-child(${i + 1}), #printable td:nth-child(${i + 1}) { width: ${(w / 1053 * 100).toFixed(2)}% !important; max-width: none !important; } }`).join("\n");
         return `
         #printable.pdf-capture table { table-layout: fixed !important; }
         #printable.pdf-capture td, #printable.pdf-capture td .cell-text { font-size: ${fs}px !important; font-weight: ${bold} !important; }
