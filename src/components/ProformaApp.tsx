@@ -561,7 +561,7 @@ export default function ProformaApp() {
   /* ----- proforma management ----- */
   const createProforma = async () => {
     const p = newProforma("New Proforma", proformas.length);
-    if (active) { p.meta = { ...active.meta, customer: "", date: new Date().toISOString().slice(0,10) }; p.themeColor = active.themeColor; }
+    if (active) { p.meta = { ...active.meta, customer: "", date: new Date().toISOString().slice(0,10), layout: normalizeLayout(null) }; p.themeColor = active.themeColor; }
     const { error } = await supabase.from("proformas").insert({ id: p.id, name: p.name, sort_order: p.sortOrder, is_primary: false, meta: p.meta, theme_color: p.themeColor, data: {} });
     if (error) { toast.error("فشل الإنشاء"); return; }
     const { error: itemError } = await supabase.from("proforma_items").insert(p.rows.map((row, idx) => rowToItem(row, p.id, idx)));
@@ -841,7 +841,7 @@ export default function ProformaApp() {
           if (comma < 0) continue;
           const extension = data.slice(0, comma).includes("png") ? "png" : "jpeg";
           const imageId = workbook.addImage({ base64: data.slice(comma + 1), extension });
-          sheet.addImage(imageId, { tl: { col: column - 1 + 0.08, row: index + 1 + 0.08 }, br: { col: column - 0.08, row: index + 1.92 }, editAs: "oneCell" });
+          sheet.addImage(imageId, { tl: { col: column - 1 + 0.08, row: index + 1 + 0.08 } as ExcelJS.Anchor, br: { col: column - 0.08, row: index + 1.92 } as ExcelJS.Anchor, editAs: "oneCell" });
         }
       }
       const buffer = await workbook.xlsx.writeBuffer();
@@ -941,7 +941,7 @@ export default function ProformaApp() {
                     </div>
                   </div>
                   <div className="mt-3 flex justify-between gap-2">
-                    <Button size="sm" variant="ghost" onClick={() => setLayout(DEFAULT_LAYOUT)}>{lang === "ar" ? "إعادة ضبط" : "Reset"}</Button>
+                  <Button size="sm" variant="ghost" onClick={() => setLayout(normalizeLayout(null))}>{lang === "ar" ? "إعادة ضبط" : "Reset"}</Button>
                     <Button size="sm" onClick={() => { setShowLayout(false); toast.success(lang === "ar" ? "تم حفظ التنسيق" : "Layout saved"); }}>{lang === "ar" ? "حفظ" : "Save"}</Button>
                   </div>
                 </div>
@@ -1020,7 +1020,7 @@ export default function ProformaApp() {
               style={{ tableLayout: "fixed", fontSize: `${layout.fontSize}px`, fontWeight: layout.bold ? 700 : undefined }}>
               <colgroup>
                 {layout.widths.map((w, i) => (
-                  <col key={i} style={{ width: `${(w / layout.widths.reduce((a, b) => a + b, 0)) * 100}%` }} />
+                  <col key={i} style={{ width: `${(w / layout.widths.reduce((a, b) => a + b, 0)) * 1053}px` }} />
                 ))}
                 <col className="actions-col" style={{ width: "70px" }} />
               </colgroup>
