@@ -1130,53 +1130,6 @@ export default function ProformaApp() {
         #printable.export-capture input { border: none !important; background: transparent !important; box-shadow: none !important; }
         #printable.export-capture td { word-break: break-word; white-space: normal !important; vertical-align: middle !important; padding: 4px 3px !important; }
         #printable.export-capture th { white-space: normal !important; padding: 6px 2px !important; font-size: 10px !important; line-height: 1.1 !important; }
-        /* Narrow numeric columns: Ctn, Doz/Ctn, Set/Ctn, Pcs/Set, Price/Set */
-        #printable.export-capture th:nth-child(6), #printable.export-capture td:nth-child(6) { width: 52px !important; max-width: 52px !important; }
-        #printable.export-capture th:nth-child(7), #printable.export-capture td:nth-child(7),
-        #printable.export-capture th:nth-child(8), #printable.export-capture td:nth-child(8),
-        #printable.export-capture th:nth-child(9), #printable.export-capture td:nth-child(9),
-        #printable.export-capture th:nth-child(10), #printable.export-capture td:nth-child(10) { width: 58px !important; max-width: 58px !important; }
-        /* T.Amount slightly smaller */
-        #printable.export-capture th:nth-child(11) { font-size: 9px !important; }
-        #printable.export-capture th:nth-child(11), #printable.export-capture td:nth-child(11) { width: 78px !important; max-width: 78px !important; }
-        /* CBM / T.CBM / Weight / T.Weight — only as wide as the text */
-        #printable.export-capture th:nth-child(12), #printable.export-capture td:nth-child(12),
-        #printable.export-capture th:nth-child(13), #printable.export-capture td:nth-child(13),
-        #printable.export-capture th:nth-child(14), #printable.export-capture td:nth-child(14),
-        #printable.export-capture th:nth-child(15), #printable.export-capture td:nth-child(15) { width: 54px !important; max-width: 54px !important; font-size: 9px !important; }
-        /* Numbers: bold + slightly larger so the exported file reads clearly */
-        #printable.export-capture td:nth-child(n+6) .cell-text,
-        #printable.export-capture td:nth-child(n+6) { font-weight: 700 !important; font-size: 11px !important; }
-        #printable.export-capture td:nth-child(2) { font-weight: 600 !important; }
-        /* Images: keep the adjusted framing, just bigger */
-        #printable.export-capture .img-cell-btn { width: 120px !important; height: 120px !important; }
-        #printable.export-capture .img-cell-btn img { width: 100% !important; height: 100% !important; object-fit: contain !important; }
-        /* Cap Item Name / Description so they don't dominate */
-        #printable.export-capture th:nth-child(2), #printable.export-capture td:nth-child(2) { max-width: 180px !important; width: 180px !important; }
-        #printable.export-capture th:nth-child(3), #printable.export-capture td:nth-child(3) { max-width: 220px !important; width: 220px !important; }
-        #printable.export-capture .cell-text { font-size: 11px !important; line-height: 1.25 !important; }
-        #printable.export-capture .img-cell-btn { width: 120px !important; height: 120px !important; }
-        #printable.export-capture .img-cell-btn img { object-fit: contain !important; }
-        #printable.export-capture .meta-input { display: none !important; }
-        #printable.export-capture .meta-text { display: block !important; }
-        #printable.export-capture .footer-input { display: none !important; }
-        #printable.export-capture .footer-text { display: block !important; color: #ffffff !important; }
-        #printable.export-capture.invoice-capture th:nth-child(n+12),
-        #printable.export-capture.invoice-capture td:nth-child(n+12) { display: none !important; }
-        #printable.export-capture.invoice-capture table { table-layout: fixed !important; }
-        #printable.export-capture.invoice-capture th:nth-child(1), #printable.export-capture.invoice-capture td:nth-child(1) { width: 55px !important; }
-        #printable.export-capture.invoice-capture th:nth-child(2), #printable.export-capture.invoice-capture td:nth-child(2) { width: 170px !important; max-width: 170px !important; }
-        #printable.export-capture.invoice-capture th:nth-child(3), #printable.export-capture.invoice-capture td:nth-child(3) { width: 220px !important; max-width: 220px !important; }
-        #printable.export-capture.invoice-capture th:nth-child(4), #printable.export-capture.invoice-capture td:nth-child(4),
-        #printable.export-capture.invoice-capture th:nth-child(5), #printable.export-capture.invoice-capture td:nth-child(5) { width: 135px !important; }
-        #printable.export-capture.invoice-capture th:nth-child(6), #printable.export-capture.invoice-capture td:nth-child(6) { width: 80px !important; }
-        #printable.export-capture.invoice-capture th:nth-child(7), #printable.export-capture.invoice-capture td:nth-child(7),
-        #printable.export-capture.invoice-capture th:nth-child(8), #printable.export-capture.invoice-capture td:nth-child(8),
-        #printable.export-capture.invoice-capture th:nth-child(9), #printable.export-capture.invoice-capture td:nth-child(9) { width: 95px !important; }
-        #printable.export-capture.invoice-capture th:nth-child(10), #printable.export-capture.invoice-capture td:nth-child(10),
-        #printable.export-capture.invoice-capture th:nth-child(11), #printable.export-capture.invoice-capture td:nth-child(11) { width: 120px !important; }
-        #printable.export-capture.invoice-capture .totals-row > div:nth-child(2),
-        #printable.export-capture.invoice-capture .totals-row > div:nth-child(3) { display: none !important; }
         input[type="number"]::-webkit-outer-spin-button,
         input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
         input[type="number"] { -moz-appearance: textfield; }
@@ -1204,27 +1157,11 @@ export default function ProformaApp() {
         }
       `}</style>
 
-      {/* DYNAMIC LAYOUT CSS */}
       <style>{(() => {
         const total = layout.widths.reduce((a, b) => a + b, 0) || 1;
-        const px = layout.widths.map((w) => Math.round((w / total) * 1053));
-        const fs = layout.fontSize;
-        const bold = layout.bold ? 700 : 500;
-        const cols = px.map((w, i) => `#printable.export-capture th:nth-child(${i + 1}), #printable.export-capture td:nth-child(${i + 1}) { width: ${w}px !important; max-width: ${w}px !important; }
-        @media print { #printable th:nth-child(${i + 1}), #printable td:nth-child(${i + 1}) { width: ${(w / 1053 * 100).toFixed(2)}% !important; max-width: none !important; } }`).join("\n");
-        return `
-        #printable.export-capture table { table-layout: fixed !important; }
-        #printable.export-capture td, #printable.export-capture td .cell-text { font-size: ${fs}px !important; font-weight: ${bold} !important; }
-        #printable.export-capture th { font-size: ${Math.max(7, fs - 2)}px !important; }
-        #printable.export-capture td:nth-child(n+6), #printable.export-capture td:nth-child(n+6) .cell-text { font-weight: 700 !important; font-size: ${fs}px !important; }
-        ${cols}
-        @media print {
-          #printable table { table-layout: fixed !important; }
-          #printable td, #printable td .cell-text, #printable td input { font-size: ${fs}px !important; font-weight: ${bold} !important; }
-          #printable th { font-size: ${Math.max(7, fs - 2)}px !important; }
-          #printable td:nth-child(n+6), #printable td:nth-child(n+6) .cell-text, #printable td:nth-child(n+6) input { font-weight: 700 !important; }
-        }
-        `;
+        const cols = layout.widths.map((w, i) => `#printable.export-capture th:nth-child(${i + 1}), #printable.export-capture td:nth-child(${i + 1}) { width: ${(w / total * 1123).toFixed(2)}px !important; max-width: ${(w / total * 1123).toFixed(2)}px !important; }
+        @media print { #printable th:nth-child(${i + 1}), #printable td:nth-child(${i + 1}) { width: ${(w / total * 100).toFixed(2)}% !important; max-width: none !important; } }`).join("\n");
+        return `${cols}`;
       })()}</style>
 
       {showCompany && (
