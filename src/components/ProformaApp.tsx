@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import {
   Plus, Trash2, FileDown, Presentation, Copy, Library, FilePlus, Palette, X,
   Package, Printer, ImageIcon, Send, Save, Languages, LogOut, Star, FileText,
-  Lock, LockOpen, Sliders,
+  Lock, LockOpen, Sliders, Sheet,
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -561,7 +561,7 @@ export default function ProformaApp() {
   /* ----- proforma management ----- */
   const createProforma = async () => {
     const p = newProforma("New Proforma", proformas.length);
-    if (active) { p.meta = { ...active.meta, customer: "", date: new Date().toISOString().slice(0,10) }; p.themeColor = active.themeColor; }
+    if (active) { p.meta = { ...active.meta, customer: "", date: new Date().toISOString().slice(0,10), layout: normalizeLayout(null) }; p.themeColor = active.themeColor; }
     const { error } = await supabase.from("proformas").insert({ id: p.id, name: p.name, sort_order: p.sortOrder, is_primary: false, meta: p.meta, theme_color: p.themeColor, data: {} });
     if (error) { toast.error("فشل الإنشاء"); return; }
     const { error: itemError } = await supabase.from("proforma_items").insert(p.rows.map((row, idx) => rowToItem(row, p.id, idx)));
@@ -813,6 +813,45 @@ export default function ProformaApp() {
     toast.success("PPTX ✓");
   };
 
+  const exportExcel = async () => {
+    toast.message(lang === "ar" ? "بنحضّر ملف إكسل…" : "Preparing Excel…");
+    try {
+      const { default: ExcelJS } = await import("exceljs");
+      const workbook = new ExcelJS.Workbook();
+      const sheet = workbook.addWorksheet((active.name || "Proforma").slice(0, 31), { pageSetup: { orientation: "landscape", fitToPage: true, fitToWidth: 1 } });
+      const heads = T.en.cols.slice(0, 15);
+      sheet.addRow(heads);
+      sheet.getRow(1).height = 30;
+      sheet.getRow(1).eachCell((cell) => { cell.font = { bold: true, color: { argb: "FFFFFFFF" } }; cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: `FF${themeColor}` } }; cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true }; });
+      sheet.columns = layout.widths.map((width) => ({ width: Math.max(5, width / 7) }));
+      for (let index = 0; index < rows.length; index++) {
+        const row = rows[index];
+        const excelRow = sheet.addRow([index + 1, row.itemName, row.description, "", "", row.ctn, row.dozCtn, row.setCtn, row.pcsSet, row.pricePerCtn, amount(row) || "", row.cbm, tCbm(row) || "", row.weight, tWeight(row) || ""]);
+        excelRow.height = Math.max(55, (layout.rowHeights[row.id] ?? 112) * 0.75);
+        excelRow.eachCell((cell, column) => {
+          const style = { ...layout.columnStyles[column - 1], ...layout.cellStyles[`${row.id}:${column - 1}`] };
+          cell.font = { name: "Arial", size: style.fontSize ?? layout.fontSize, bold: style.bold ?? layout.bold };
+          cell.alignment = { horizontal: column === 2 || column === 3 ? "left" : "center", vertical: "middle", wrapText: true };
+          cell.border = { top: { style: "thin", color: { argb: "FFE5E7EB" } }, left: { style: "thin", color: { argb: "FFE5E7EB" } }, bottom: { style: "thin", color: { argb: "FFE5E7EB" } }, right: { style: "thin", color: { argb: "FFE5E7EB" } } };
+        });
+        for (const [column, src] of [[4, row.image], [5, row.packing]] as const) {
+          if (!src) continue;
+          const data = await toDataUrl(src);
+          const comma = data.indexOf(",");
+          if (comma < 0) continue;
+          const extension = data.slice(0, comma).includes("png") ? "png" : "jpeg";
+          const imageId = workbook.addImage({ base64: data.slice(comma + 1), extension });
+          sheet.addImage(imageId, { tl: { col: column - 1 + 0.08, row: index + 1 + 0.08 } as ExcelJS.Anchor, br: { col: column - 0.08, row: index + 1.92 } as ExcelJS.Anchor, editAs: "oneCell" });
+        }
+      }
+      const buffer = await workbook.xlsx.writeBuffer();
+      const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a"); anchor.href = url; anchor.download = `${meta.title || "proforma"}-${meta.customer || "customer"}.xlsx`; anchor.click(); URL.revokeObjectURL(url);
+      toast.success("Excel ✓");
+    } catch (error) { console.error(error); toast.error(lang === "ar" ? "فشل تنزيل إكسل" : "Excel export failed"); }
+  };
+
   const onPrint = () => { setTimeout(() => window.print(), 100); };
   const onSaveNow = async () => { await flushSave(); toast.success(lang === "ar" ? "تم الحفظ" : "Saved"); };
   const onLogout = async () => { await supabase.auth.signOut(); navigate({ to: "/auth" }); };
@@ -864,6 +903,12 @@ export default function ProformaApp() {
                       onChange={(e) => setLayout((l) => ({ ...l, fontSize: parseFloat(e.target.value) }))} className="flex-1" />
                     <span className="w-10 text-end text-xs">{layout.fontSize}px</span>
                   </div>
+                  <div className="mb-3 flex items-center gap-2">
+                    <span className="w-20 text-xs font-semibold">{lang === "ar" ? "حجم المعاينة" : "Preview size"}</span>
+                    <input type="range" min={55} max={120} step={5} value={layout.zoom}
+                      onChange={(e) => setLayout((l) => ({ ...l, zoom: Number(e.target.value) }))} className="flex-1" />
+                    <span className="w-10 text-end text-xs">{layout.zoom}%</span>
+                  </div>
                   <label className="mb-3 flex cursor-pointer items-center gap-2 text-xs font-semibold">
                     <input type="checkbox" checked={layout.bold} onChange={(e) => setLayout((l) => ({ ...l, bold: e.target.checked }))} style={{ accentColor: accent }} />
                     {lang === "ar" ? "خط عريض (Bold)" : "Bold text"}
@@ -880,8 +925,23 @@ export default function ProformaApp() {
                       </div>
                     ))}
                   </div>
+                  <div className="mt-3 border-t pt-3">
+                    <div className="mb-2 text-xs font-semibold">
+                      {selectedCell ? (lang === "ar" ? "تنسيق الخلية المحددة" : "Selected cell") : selectedColumn !== null ? `${lang === "ar" ? "تنسيق عمود" : "Column"} ${t.cols[selectedColumn]}` : (lang === "ar" ? "التنسيق العام" : "General format")}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <input type="number" min={8} max={22} className="h-8 w-20 rounded border px-2 text-xs" placeholder={String(layout.fontSize)}
+                        onChange={(e) => { const value = Number(e.target.value); if (value) setSelectionFormat({ fontSize: value }); }} />
+                      <Button size="sm" variant="outline" onClick={() => {
+                        const key = selectedCell ? `${selectedCell.rowId}:${selectedCell.col}` : "";
+                        const current = selectedCell ? layout.cellStyles[key]?.bold : selectedColumn !== null ? layout.columnStyles[selectedColumn]?.bold : layout.bold;
+                        setSelectionFormat({ bold: !current });
+                      }}>B</Button>
+                      <Button size="sm" variant="ghost" onClick={() => { setSelectedCell(null); setSelectedColumn(null); }}>{lang === "ar" ? "إلغاء التحديد" : "Clear"}</Button>
+                    </div>
+                  </div>
                   <div className="mt-3 flex justify-between gap-2">
-                    <Button size="sm" variant="ghost" onClick={() => setLayout(DEFAULT_LAYOUT)}>{lang === "ar" ? "إعادة ضبط" : "Reset"}</Button>
+                  <Button size="sm" variant="ghost" onClick={() => setLayout(normalizeLayout(null))}>{lang === "ar" ? "إعادة ضبط" : "Reset"}</Button>
                     <Button size="sm" onClick={() => { setShowLayout(false); toast.success(lang === "ar" ? "تم حفظ التنسيق" : "Layout saved"); }}>{lang === "ar" ? "حفظ" : "Save"}</Button>
                   </div>
                 </div>
@@ -889,6 +949,7 @@ export default function ProformaApp() {
             </div>
             <Button size="sm" onClick={() => exportPDF()} className="bg-sky-600 text-white hover:bg-sky-700"><FileDown className="mr-1 h-4 w-4" /> {t.pdf}</Button>
             <Button size="sm" onClick={() => exportPPTX()} className="bg-orange-500 text-white hover:bg-orange-600"><Presentation className="mr-1 h-4 w-4" /> {t.pptx}</Button>
+            <Button size="sm" onClick={exportExcel} className="bg-emerald-700 text-white hover:bg-emerald-800"><Sheet className="mr-1 h-4 w-4" /> Excel</Button>
             <Button size="sm" variant="outline" onClick={() => setShowInvoice(true)}><FileText className="mr-1 h-4 w-4" /> {t.createInvoice}</Button>
             <Button size="sm" onClick={createProforma} className="bg-purple-600 text-white hover:bg-purple-700"><FilePlus className="mr-1 h-4 w-4" /> {t.newInvoice}</Button>
             <Button size="sm" onClick={addRow} className="text-white hover:opacity-90" style={{ background: accent }}><Plus className="mr-1 h-4 w-4" /> {t.addItem}</Button>
@@ -928,10 +989,12 @@ export default function ProformaApp() {
       </header>
 
       {/* SHEET */}
-      <main className="mx-auto max-w-[1400px] px-4 py-6 print:max-w-none print:p-0">
-        <div id="printable" className="overflow-hidden rounded-lg bg-white shadow-sm print:rounded-none print:shadow-none">
+      <main className="overflow-x-auto px-4 py-6 print:p-0">
+        <div id="printable" className="mx-auto flex w-fit flex-col gap-6 print:gap-0" style={{ zoom: `${layout.zoom}%` }}>
+          {pageRows.map((page, pageIndex) => (
+          <section key={pageIndex} className="proforma-page relative flex h-[794px] w-[1123px] shrink-0 flex-col overflow-hidden bg-white shadow-lg print:shadow-none">
           {/* Banner */}
-          <div className="relative flex items-center justify-between px-6 py-5" style={{ background: accent }}>
+          <div className="relative flex items-center justify-between px-6 py-3" style={{ background: accent }}>
             <button type="button" onClick={() => logoRef.current?.click()} className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-md bg-white text-[10px] font-bold uppercase leading-tight shadow" style={{ color: accent }} title="Upload logo">
               {meta.logo ? <img src={meta.logo} crossOrigin="anonymous" alt="logo" className="h-full w-full object-contain p-1" /> : <span className="px-1 text-center">{meta.company.split(" ").slice(0,2).join(" ")}</span>}
             </button>
@@ -952,14 +1015,14 @@ export default function ProformaApp() {
             </div>
           </div>
           {/* TABLE */}
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[1300px] border-collapse print:min-w-0" dir="ltr"
+          <div className="min-h-0 flex-1 overflow-hidden">
+            <table className="w-full border-collapse" dir="ltr"
               style={{ tableLayout: "fixed", fontSize: `${layout.fontSize}px`, fontWeight: layout.bold ? 700 : undefined }}>
               <colgroup>
                 {layout.widths.map((w, i) => (
-                  <col key={i} style={{ width: `${(w / layout.widths.reduce((a, b) => a + b, 0)) * 100}%` }} />
+                  <col key={i} style={{ width: `${(w / layout.widths.reduce((a, b) => a + b, 0)) * 1053}px` }} />
                 ))}
-                <col className="actions-col" style={{ width: "78px" }} />
+                <col className="actions-col" style={{ width: "70px" }} />
               </colgroup>
               <thead>
                 <tr style={{ background: `${accent}15`, color: accent }}>
@@ -968,35 +1031,45 @@ export default function ProformaApp() {
                     const align = ci === 1 || ci === 2 ? "text-left" : "text-center";
                     const parts = h.includes("/") ? h.split("/") : null;
                     return (
-                      <th key={h} className={`px-1 py-2.5 text-xs font-semibold uppercase leading-tight ${align}`}>
+                      <th key={h} onClick={() => { if (ci < 15) { setSelectedColumn(ci); setSelectedCell(null); } }} className={`relative px-1 py-2.5 text-xs font-semibold uppercase leading-tight ${align} ${selectedColumn === ci ? "ring-2 ring-inset ring-foreground/40" : ""}`}>
                         {parts ? (
                           <span className="block">
                             <span className="block whitespace-nowrap">{parts[0]}/</span>
                             <span className="block whitespace-nowrap">{parts.slice(1).join("/")}</span>
                           </span>
                         ) : h}
+                        {ci < 15 && <span className="column-resizer absolute -right-1 top-0 z-10 h-full w-2 cursor-col-resize" onPointerDown={(event) => {
+                          event.preventDefault(); let last = event.clientX;
+                          const move = (e: PointerEvent) => { changeColumnWidth(ci, e.clientX - last); last = e.clientX; };
+                          const up = () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); };
+                          window.addEventListener("pointermove", move); window.addEventListener("pointerup", up);
+                        }} />}
                       </th>
                     );
                   })}
                 </tr>
               </thead>
               <tbody>
-                {rows.map((r, i) => (
-                  <RowEditor key={r.id} index={i+1} row={r} accent={accent} lang={lang} lockCW={lockCW}
+                {page.map((r) => {
+                  const i = rows.findIndex((item) => item.id === r.id);
+                  return <RowEditor key={r.id} index={i+1} row={r} accent={accent} lang={lang} lockCW={lockCW}
+                    height={layout.rowHeights[r.id] ?? 112} columnStyles={layout.columnStyles} cellStyles={layout.cellStyles}
+                    selectedCell={selectedCell} onSelectCell={(col) => { setSelectedCell({ rowId: r.id, col }); setSelectedColumn(null); }}
+                    onHeightChange={(height) => setRowHeight(r.id, height)}
                     onChange={(p) => updateRow(r.id, p)}
                     onImage={(f) => onImage(r.id, f, "image")}
                     onPacking={(f) => onImage(r.id, f, "packing")}
                     onDuplicate={() => duplicateRow(r.id)}
                     onRemove={() => removeRow(r.id)}
                     onSend={() => setSendItem(r)}
-                  />
-                ))}
+                  />;
+                })}
               </tbody>
             </table>
           </div>
           {/* Notes + Totals */}
-          <div className="px-6 pt-3"><div className="text-end text-[13px] font-semibold">• {meta.notes}</div></div>
-          <div className="totals-row flex flex-wrap justify-end gap-3 px-6 py-4">
+          {pageIndex === pageRows.length - 1 && <><div className="px-6 pt-2"><div className="text-end text-[13px] font-semibold">• {meta.notes}</div></div>
+          <div className="totals-row flex justify-end gap-2 px-6 py-2">
             {[
               { l: t.totals.ctn, v: String(totals.tCtn) },
               { l: t.totals.cbm, v: totals.tCBM.toFixed(2) },
@@ -1007,12 +1080,12 @@ export default function ProformaApp() {
                 { l: "Total", v: String(+(totals.tAmount + invoiceTransport).toFixed(2)) },
               ] : []),
             ].map((c) => (
-              <div key={c.l} className="min-w-[160px] overflow-hidden rounded-md border" style={{ borderColor: accent }}>
-                <div className="px-3 py-1.5 text-center text-xs font-bold uppercase text-white" style={{ background: accent }}>{c.l}</div>
-                <div className="px-3 py-3 text-center text-2xl font-bold">{c.v}</div>
+              <div key={c.l} className="min-w-[130px] overflow-hidden rounded-md border" style={{ borderColor: accent }}>
+                <div className="px-2 py-1 text-center text-[10px] font-bold uppercase text-white" style={{ background: accent }}>{c.l}</div>
+                <div className="px-2 py-1.5 text-center text-lg font-bold">{c.v}</div>
               </div>
             ))}
-          </div>
+          </div></>}
           {/* Footer */}
           <div className="footer-block px-6 py-3 text-center text-white" style={{ background: accent }}>
             <Input value={meta.address} onChange={(e) => setMeta({ ...meta, address: e.target.value })} className="footer-input mx-auto h-7 max-w-3xl border-0 bg-transparent text-center text-[12px] font-medium text-white placeholder:text-white/70 shadow-none focus-visible:ring-0" />
@@ -1022,6 +1095,9 @@ export default function ProformaApp() {
             <Input value={meta.email} onChange={(e) => setMeta({ ...meta, email: e.target.value })} className="footer-input mx-auto h-7 max-w-xl border-0 bg-transparent text-center text-[11px] text-white shadow-none focus-visible:ring-0" />
             <div className="footer-text hidden text-[11px] leading-5">{meta.email || "\u00A0"}</div>
           </div>
+          <div className="absolute bottom-1 end-2 text-[9px] text-white/80">{pageIndex + 1} / {pageRows.length}</div>
+          </section>
+          ))}
         </div>
         <p className="mt-4 text-center text-xs text-muted-foreground print:hidden">{t.arabicTip}</p>
       </main>
@@ -1043,66 +1119,17 @@ export default function ProformaApp() {
       {/* PRINT CSS */}
       <style>{`
         @page { size: A4 landscape; margin: 6mm; }
-        /* Hide the Actions column when generating PDF via html2canvas */
-        #printable.pdf-capture th:last-child,
-        #printable.pdf-capture td:last-child { display: none !important; }
+        /* Client-only Actions are never included in exported files */
+        #printable.export-capture .actions-col { display: none !important; }
         /* When capturing for PDF, swap inputs -> plain text, drop borders */
-        #printable.pdf-capture .cell-input { display: none !important; }
-        #printable.pdf-capture .cell-text { display: block !important; }
-        #printable.pdf-capture .img-cell-btn { border-color: transparent !important; background: transparent !important; }
-        #printable.pdf-capture input { border: none !important; background: transparent !important; box-shadow: none !important; }
-        #printable.pdf-capture { width: 1600px !important; }
-        #printable.pdf-capture .overflow-x-auto { overflow: visible !important; }
-        #printable.pdf-capture table { table-layout: auto !important; min-width: 100% !important; width: 100% !important; }
-        #printable.pdf-capture td { word-break: break-word; white-space: normal !important; vertical-align: middle !important; padding: 4px 3px !important; }
-        #printable.pdf-capture th { white-space: normal !important; padding: 6px 2px !important; font-size: 10px !important; line-height: 1.1 !important; }
-        /* Narrow numeric columns: Ctn, Doz/Ctn, Set/Ctn, Pcs/Set, Price/Set */
-        #printable.pdf-capture th:nth-child(6), #printable.pdf-capture td:nth-child(6) { width: 52px !important; max-width: 52px !important; }
-        #printable.pdf-capture th:nth-child(7), #printable.pdf-capture td:nth-child(7),
-        #printable.pdf-capture th:nth-child(8), #printable.pdf-capture td:nth-child(8),
-        #printable.pdf-capture th:nth-child(9), #printable.pdf-capture td:nth-child(9),
-        #printable.pdf-capture th:nth-child(10), #printable.pdf-capture td:nth-child(10) { width: 58px !important; max-width: 58px !important; }
-        /* T.Amount slightly smaller */
-        #printable.pdf-capture th:nth-child(11) { font-size: 9px !important; }
-        #printable.pdf-capture th:nth-child(11), #printable.pdf-capture td:nth-child(11) { width: 78px !important; max-width: 78px !important; }
-        /* CBM / T.CBM / Weight / T.Weight — only as wide as the text */
-        #printable.pdf-capture th:nth-child(12), #printable.pdf-capture td:nth-child(12),
-        #printable.pdf-capture th:nth-child(13), #printable.pdf-capture td:nth-child(13),
-        #printable.pdf-capture th:nth-child(14), #printable.pdf-capture td:nth-child(14),
-        #printable.pdf-capture th:nth-child(15), #printable.pdf-capture td:nth-child(15) { width: 54px !important; max-width: 54px !important; font-size: 9px !important; }
-        /* Numbers: bold + slightly larger so the exported file reads clearly */
-        #printable.pdf-capture td:nth-child(n+6) .cell-text,
-        #printable.pdf-capture td:nth-child(n+6) { font-weight: 700 !important; font-size: 11px !important; }
-        #printable.pdf-capture td:nth-child(2) { font-weight: 600 !important; }
-        /* Images: keep the adjusted framing, just bigger */
-        #printable.pdf-capture .img-cell-btn { width: 120px !important; height: 120px !important; }
-        #printable.pdf-capture .img-cell-btn img { width: 100% !important; height: 100% !important; object-fit: contain !important; }
-        /* Cap Item Name / Description so they don't dominate */
-        #printable.pdf-capture th:nth-child(2), #printable.pdf-capture td:nth-child(2) { max-width: 180px !important; width: 180px !important; }
-        #printable.pdf-capture th:nth-child(3), #printable.pdf-capture td:nth-child(3) { max-width: 220px !important; width: 220px !important; }
-        #printable.pdf-capture .cell-text { font-size: 11px !important; line-height: 1.25 !important; }
-        #printable.pdf-capture .img-cell-btn { width: 120px !important; height: 120px !important; }
-        #printable.pdf-capture .img-cell-btn img { object-fit: contain !important; }
-        #printable.pdf-capture .meta-input { display: none !important; }
-        #printable.pdf-capture .meta-text { display: block !important; }
-        #printable.pdf-capture .footer-input { display: none !important; }
-        #printable.pdf-capture .footer-text { display: block !important; color: #ffffff !important; }
-        #printable.pdf-capture.invoice-capture th:nth-child(n+12),
-        #printable.pdf-capture.invoice-capture td:nth-child(n+12) { display: none !important; }
-        #printable.pdf-capture.invoice-capture table { table-layout: fixed !important; }
-        #printable.pdf-capture.invoice-capture th:nth-child(1), #printable.pdf-capture.invoice-capture td:nth-child(1) { width: 55px !important; }
-        #printable.pdf-capture.invoice-capture th:nth-child(2), #printable.pdf-capture.invoice-capture td:nth-child(2) { width: 170px !important; max-width: 170px !important; }
-        #printable.pdf-capture.invoice-capture th:nth-child(3), #printable.pdf-capture.invoice-capture td:nth-child(3) { width: 220px !important; max-width: 220px !important; }
-        #printable.pdf-capture.invoice-capture th:nth-child(4), #printable.pdf-capture.invoice-capture td:nth-child(4),
-        #printable.pdf-capture.invoice-capture th:nth-child(5), #printable.pdf-capture.invoice-capture td:nth-child(5) { width: 135px !important; }
-        #printable.pdf-capture.invoice-capture th:nth-child(6), #printable.pdf-capture.invoice-capture td:nth-child(6) { width: 80px !important; }
-        #printable.pdf-capture.invoice-capture th:nth-child(7), #printable.pdf-capture.invoice-capture td:nth-child(7),
-        #printable.pdf-capture.invoice-capture th:nth-child(8), #printable.pdf-capture.invoice-capture td:nth-child(8),
-        #printable.pdf-capture.invoice-capture th:nth-child(9), #printable.pdf-capture.invoice-capture td:nth-child(9) { width: 95px !important; }
-        #printable.pdf-capture.invoice-capture th:nth-child(10), #printable.pdf-capture.invoice-capture td:nth-child(10),
-        #printable.pdf-capture.invoice-capture th:nth-child(11), #printable.pdf-capture.invoice-capture td:nth-child(11) { width: 120px !important; }
-        #printable.pdf-capture.invoice-capture .totals-row > div:nth-child(2),
-        #printable.pdf-capture.invoice-capture .totals-row > div:nth-child(3) { display: none !important; }
+        #printable.export-capture { zoom: 100% !important; gap: 0 !important; }
+        #printable.export-capture .proforma-page { box-shadow: none !important; }
+        #printable.export-capture .cell-input { display: none !important; }
+        #printable.export-capture .cell-text { display: block !important; }
+        #printable.export-capture .img-cell-btn { border-color: transparent !important; background: transparent !important; }
+        #printable.export-capture input { border: none !important; background: transparent !important; box-shadow: none !important; }
+        #printable.export-capture td { word-break: break-word; white-space: normal !important; vertical-align: middle !important; padding: 4px 3px !important; }
+        #printable.export-capture th { white-space: normal !important; padding: 6px 2px !important; font-size: 10px !important; line-height: 1.1 !important; }
         input[type="number"]::-webkit-outer-spin-button,
         input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
         input[type="number"] { -moz-appearance: textfield; }
@@ -1116,7 +1143,7 @@ export default function ProformaApp() {
           #printable table { min-width: 0 !important; }
           #printable td, #printable th { white-space: normal !important; word-break: break-word; vertical-align: middle; }
           #printable .img-cell-btn { border-color: transparent !important; background: transparent !important; }
-          #printable th:last-child, #printable td:last-child { display: none !important; }
+          #printable .actions-col { display: none !important; }
           #printable input { border: none !important; background: transparent !important; padding: 0 !important; box-shadow: none !important; }
           #printable .footer-input { display: none !important; }
           #printable .footer-text { display: block !important; color: #ffffff !important; }
@@ -1130,27 +1157,11 @@ export default function ProformaApp() {
         }
       `}</style>
 
-      {/* DYNAMIC LAYOUT CSS — mirrors the Layout panel into PDF capture + print */}
       <style>{(() => {
         const total = layout.widths.reduce((a, b) => a + b, 0) || 1;
-        const px = layout.widths.map((w) => Math.round((w / total) * 1560));
-        const fs = layout.fontSize;
-        const bold = layout.bold ? 700 : 500;
-        const cols = px.map((w, i) => `#printable.pdf-capture th:nth-child(${i + 1}), #printable.pdf-capture td:nth-child(${i + 1}) { width: ${w}px !important; max-width: ${w}px !important; }
-        @media print { #printable th:nth-child(${i + 1}), #printable td:nth-child(${i + 1}) { width: ${(w / 1560 * 100).toFixed(2)}% !important; max-width: none !important; } }`).join("\n");
-        return `
-        #printable.pdf-capture table { table-layout: fixed !important; }
-        #printable.pdf-capture td, #printable.pdf-capture td .cell-text { font-size: ${fs}px !important; font-weight: ${bold} !important; }
-        #printable.pdf-capture th { font-size: ${Math.max(7, fs - 2)}px !important; }
-        #printable.pdf-capture td:nth-child(n+6), #printable.pdf-capture td:nth-child(n+6) .cell-text { font-weight: 700 !important; font-size: ${fs}px !important; }
-        ${cols}
-        @media print {
-          #printable table { table-layout: fixed !important; }
-          #printable td, #printable td .cell-text, #printable td input { font-size: ${fs}px !important; font-weight: ${bold} !important; }
-          #printable th { font-size: ${Math.max(7, fs - 2)}px !important; }
-          #printable td:nth-child(n+6), #printable td:nth-child(n+6) .cell-text, #printable td:nth-child(n+6) input { font-weight: 700 !important; }
-        }
-        `;
+        const cols = layout.widths.map((w, i) => `#printable.export-capture th:nth-child(${i + 1}), #printable.export-capture td:nth-child(${i + 1}) { width: ${(w / total * 1123).toFixed(2)}px !important; max-width: ${(w / total * 1123).toFixed(2)}px !important; }
+        @media print { #printable th:nth-child(${i + 1}), #printable td:nth-child(${i + 1}) { width: ${(w / total * 100).toFixed(2)}% !important; max-width: none !important; } }`).join("\n");
+        return `${cols}`;
       })()}</style>
 
       {showCompany && (
@@ -1284,35 +1295,48 @@ function ImageAdjuster({ src, onDone, onCancel, onPickFile }: { src: string; onD
     </div>
   );
 }
-function RowEditor({ index, row, accent, lang, lockCW = false, onChange, onImage, onPacking, onDuplicate, onRemove, onSend }:
+function RowEditor({ index, row, accent, lang, lockCW = false, height, columnStyles, cellStyles, selectedCell, onSelectCell, onHeightChange, onChange, onImage, onPacking, onDuplicate, onRemove, onSend }:
   { index: number; row: Row; accent: string; lang: Lang; lockCW?: boolean;
+    height: number; columnStyles: TextFormat[]; cellStyles: Record<string, TextFormat>; selectedCell: { rowId: string; col: number } | null;
+    onSelectCell: (col: number) => void; onHeightChange: (height: number) => void;
     onChange: (p: Partial<Row>) => void; onImage: (f: File | null) => void; onPacking: (f: File | null) => void;
     onDuplicate: () => void; onRemove: () => void; onSend: () => void; }) {
   const amt = amount(row); const tc = tCbm(row); const tw = tWeight(row);
   const tt = T[lang];
+  const styleFor = (col: number): CSSProperties => {
+    const style = { ...columnStyles[col], ...cellStyles[`${row.id}:${col}`] };
+    return { fontSize: style.fontSize ? `${style.fontSize}px` : undefined, fontWeight: style.bold === true ? 700 : style.bold === false ? 400 : undefined };
+  };
+  const cellClass = (col: number) => selectedCell?.rowId === row.id && selectedCell.col === col ? "ring-2 ring-inset ring-foreground/40" : "";
   return (
-    <tr className="border-b align-middle hover:bg-muted/20">
-      <td className="w-10 px-2 text-center text-xs font-semibold text-muted-foreground">{index}</td>
-      <td className="px-2"><CellInput value={row.itemName} onChange={(v) => onChange({ itemName: v })} align="left" /></td>
-      <td className="px-2"><CellInput value={row.description} onChange={(v) => onChange({ description: v })} align="left" /></td>
-      <td className="w-28 px-1"><ImgCell src={row.image} onPick={onImage} icon="img" /></td>
-      <td className="w-28 px-1"><ImgCell src={row.packing} onPick={onPacking} icon="pkg" /></td>
-      <td className="w-14 px-1"><CellInput value={row.ctn} onChange={(v) => onChange({ ctn: v })} type="number" /></td>
-      <td className="w-14 px-1"><CellInput value={row.dozCtn} onChange={(v) => onChange({ dozCtn: v })} /></td>
-      <td className="w-14 px-1"><CellInput value={row.setCtn} onChange={(v) => onChange({ setCtn: v })} /></td>
-      <td className="w-14 px-1"><CellInput value={row.pcsSet} onChange={(v) => onChange({ pcsSet: v })} /></td>
-      <td className="w-16 px-1"><CellInput value={row.pricePerCtn} onChange={(v) => onChange({ pricePerCtn: v })} type="number" /></td>
-      <td className="w-16 px-1 text-center text-[12px] font-bold" style={{ color: accent }}>{amt || ""}</td>
-      <td className="w-32 px-1"><CellInput value={row.cbm} onChange={(v) => onChange({ cbm: v })} type="number" readOnly={lockCW} /></td>
-      <td className="w-32 px-1 text-center text-[12px] font-semibold">{tc || ""}</td>
-      <td className="w-24 px-1"><CellInput value={row.weight} onChange={(v) => onChange({ weight: v })} type="number" readOnly={lockCW} /></td>
-      <td className="w-24 px-1 text-center text-[12px] font-semibold">{tw || ""}</td>
-      <td className="w-24 px-1 print:hidden">
+    <tr className="relative border-b align-middle hover:bg-muted/20" style={{ height }}>
+      <td onClick={() => onSelectCell(0)} className={`px-1 text-center text-xs font-semibold text-muted-foreground ${cellClass(0)}`} style={styleFor(0)}>{index}</td>
+      <td onClick={() => onSelectCell(1)} className={`px-1 ${cellClass(1)}`} style={styleFor(1)}><CellInput value={row.itemName} onChange={(v) => onChange({ itemName: v })} align="left" /></td>
+      <td onClick={() => onSelectCell(2)} className={`px-1 ${cellClass(2)}`} style={styleFor(2)}><CellInput value={row.description} onChange={(v) => onChange({ description: v })} align="left" /></td>
+      <td onClick={() => onSelectCell(3)} className={`px-1 ${cellClass(3)}`} style={styleFor(3)}><ImgCell src={row.image} onPick={onImage} icon="img" /></td>
+      <td onClick={() => onSelectCell(4)} className={`px-1 ${cellClass(4)}`} style={styleFor(4)}><ImgCell src={row.packing} onPick={onPacking} icon="pkg" /></td>
+      <td onClick={() => onSelectCell(5)} className={`px-1 ${cellClass(5)}`} style={styleFor(5)}><CellInput value={row.ctn} onChange={(v) => onChange({ ctn: v })} type="number" /></td>
+      <td onClick={() => onSelectCell(6)} className={`px-1 ${cellClass(6)}`} style={styleFor(6)}><CellInput value={row.dozCtn} onChange={(v) => onChange({ dozCtn: v })} /></td>
+      <td onClick={() => onSelectCell(7)} className={`px-1 ${cellClass(7)}`} style={styleFor(7)}><CellInput value={row.setCtn} onChange={(v) => onChange({ setCtn: v })} /></td>
+      <td onClick={() => onSelectCell(8)} className={`px-1 ${cellClass(8)}`} style={styleFor(8)}><CellInput value={row.pcsSet} onChange={(v) => onChange({ pcsSet: v })} /></td>
+      <td onClick={() => onSelectCell(9)} className={`px-1 ${cellClass(9)}`} style={styleFor(9)}><CellInput value={row.pricePerCtn} onChange={(v) => onChange({ pricePerCtn: v })} type="number" /></td>
+      <td onClick={() => onSelectCell(10)} className={`px-1 text-center font-bold ${cellClass(10)}`} style={{ ...styleFor(10), color: accent }}>{amt || ""}</td>
+      <td onClick={() => onSelectCell(11)} className={`px-1 ${cellClass(11)}`} style={styleFor(11)}><CellInput value={row.cbm} onChange={(v) => onChange({ cbm: v })} type="number" readOnly={lockCW} /></td>
+      <td onClick={() => onSelectCell(12)} className={`px-1 text-center font-semibold ${cellClass(12)}`} style={styleFor(12)}>{tc || ""}</td>
+      <td onClick={() => onSelectCell(13)} className={`px-1 ${cellClass(13)}`} style={styleFor(13)}><CellInput value={row.weight} onChange={(v) => onChange({ weight: v })} type="number" readOnly={lockCW} /></td>
+      <td onClick={() => onSelectCell(14)} className={`px-1 text-center font-semibold ${cellClass(14)}`} style={styleFor(14)}>{tw || ""}</td>
+      <td className="actions-col px-1 print:hidden">
         <div className="flex justify-center gap-1">
           <button onClick={onSend} title={tt.sendTo} className="rounded p-1 hover:bg-muted" style={{ color: accent }}><Send className="h-3.5 w-3.5" /></button>
           <button onClick={onDuplicate} title={tt.duplicate} className="rounded p-1 hover:bg-muted"><Copy className="h-3.5 w-3.5" /></button>
           <button onClick={onRemove} title={tt.delete} className="rounded p-1 text-destructive hover:bg-destructive/10"><Trash2 className="h-3.5 w-3.5" /></button>
         </div>
+        <span className="row-resizer absolute bottom-0 left-0 h-2 w-full cursor-row-resize" onPointerDown={(event) => {
+          event.preventDefault(); const start = event.clientY; const initial = height;
+          const move = (e: PointerEvent) => onHeightChange(initial + e.clientY - start);
+          const up = () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); };
+          window.addEventListener("pointermove", move); window.addEventListener("pointerup", up);
+        }} />
       </td>
     </tr>
   );
