@@ -864,6 +864,12 @@ export default function ProformaApp() {
                       onChange={(e) => setLayout((l) => ({ ...l, fontSize: parseFloat(e.target.value) }))} className="flex-1" />
                     <span className="w-10 text-end text-xs">{layout.fontSize}px</span>
                   </div>
+                  <div className="mb-3 flex items-center gap-2">
+                    <span className="w-20 text-xs font-semibold">{lang === "ar" ? "حجم المعاينة" : "Preview size"}</span>
+                    <input type="range" min={55} max={120} step={5} value={layout.zoom}
+                      onChange={(e) => setLayout((l) => ({ ...l, zoom: Number(e.target.value) }))} className="flex-1" />
+                    <span className="w-10 text-end text-xs">{layout.zoom}%</span>
+                  </div>
                   <label className="mb-3 flex cursor-pointer items-center gap-2 text-xs font-semibold">
                     <input type="checkbox" checked={layout.bold} onChange={(e) => setLayout((l) => ({ ...l, bold: e.target.checked }))} style={{ accentColor: accent }} />
                     {lang === "ar" ? "خط عريض (Bold)" : "Bold text"}
@@ -879,6 +885,21 @@ export default function ProformaApp() {
                         <span className="w-8 text-end text-[11px]">{w}</span>
                       </div>
                     ))}
+                  </div>
+                  <div className="mt-3 border-t pt-3">
+                    <div className="mb-2 text-xs font-semibold">
+                      {selectedCell ? (lang === "ar" ? "تنسيق الخلية المحددة" : "Selected cell") : selectedColumn !== null ? `${lang === "ar" ? "تنسيق عمود" : "Column"} ${t.cols[selectedColumn]}` : (lang === "ar" ? "التنسيق العام" : "General format")}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <input type="number" min={8} max={22} className="h-8 w-20 rounded border px-2 text-xs" placeholder={String(layout.fontSize)}
+                        onChange={(e) => { const value = Number(e.target.value); if (value) setSelectionFormat({ fontSize: value }); }} />
+                      <Button size="sm" variant="outline" onClick={() => {
+                        const key = selectedCell ? `${selectedCell.rowId}:${selectedCell.col}` : "";
+                        const current = selectedCell ? layout.cellStyles[key]?.bold : selectedColumn !== null ? layout.columnStyles[selectedColumn]?.bold : layout.bold;
+                        setSelectionFormat({ bold: !current });
+                      }}>B</Button>
+                      <Button size="sm" variant="ghost" onClick={() => { setSelectedCell(null); setSelectedColumn(null); }}>{lang === "ar" ? "إلغاء التحديد" : "Clear"}</Button>
+                    </div>
                   </div>
                   <div className="mt-3 flex justify-between gap-2">
                     <Button size="sm" variant="ghost" onClick={() => setLayout(DEFAULT_LAYOUT)}>{lang === "ar" ? "إعادة ضبط" : "Reset"}</Button>
@@ -928,10 +949,12 @@ export default function ProformaApp() {
       </header>
 
       {/* SHEET */}
-      <main className="mx-auto max-w-[1400px] px-4 py-6 print:max-w-none print:p-0">
-        <div id="printable" className="overflow-hidden rounded-lg bg-white shadow-sm print:rounded-none print:shadow-none">
+      <main className="overflow-x-auto px-4 py-6 print:p-0">
+        <div id="printable" className="mx-auto flex w-fit flex-col gap-6 print:gap-0" style={{ zoom: `${layout.zoom}%` }}>
+          {pageRows.map((page, pageIndex) => (
+          <section key={pageIndex} className="proforma-page relative flex h-[794px] w-[1123px] shrink-0 flex-col overflow-hidden bg-white shadow-lg print:shadow-none">
           {/* Banner */}
-          <div className="relative flex items-center justify-between px-6 py-5" style={{ background: accent }}>
+          <div className="relative flex items-center justify-between px-6 py-3" style={{ background: accent }}>
             <button type="button" onClick={() => logoRef.current?.click()} className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-md bg-white text-[10px] font-bold uppercase leading-tight shadow" style={{ color: accent }} title="Upload logo">
               {meta.logo ? <img src={meta.logo} crossOrigin="anonymous" alt="logo" className="h-full w-full object-contain p-1" /> : <span className="px-1 text-center">{meta.company.split(" ").slice(0,2).join(" ")}</span>}
             </button>
@@ -952,14 +975,14 @@ export default function ProformaApp() {
             </div>
           </div>
           {/* TABLE */}
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[1300px] border-collapse print:min-w-0" dir="ltr"
+          <div className="min-h-0 flex-1 overflow-hidden">
+            <table className="w-full border-collapse" dir="ltr"
               style={{ tableLayout: "fixed", fontSize: `${layout.fontSize}px`, fontWeight: layout.bold ? 700 : undefined }}>
               <colgroup>
                 {layout.widths.map((w, i) => (
                   <col key={i} style={{ width: `${(w / layout.widths.reduce((a, b) => a + b, 0)) * 100}%` }} />
                 ))}
-                <col className="actions-col" style={{ width: "78px" }} />
+                <col className="actions-col" style={{ width: "70px" }} />
               </colgroup>
               <thead>
                 <tr style={{ background: `${accent}15`, color: accent }}>
@@ -968,35 +991,45 @@ export default function ProformaApp() {
                     const align = ci === 1 || ci === 2 ? "text-left" : "text-center";
                     const parts = h.includes("/") ? h.split("/") : null;
                     return (
-                      <th key={h} className={`px-1 py-2.5 text-xs font-semibold uppercase leading-tight ${align}`}>
+                      <th key={h} onClick={() => { if (ci < 15) { setSelectedColumn(ci); setSelectedCell(null); } }} className={`relative px-1 py-2.5 text-xs font-semibold uppercase leading-tight ${align} ${selectedColumn === ci ? "ring-2 ring-inset ring-foreground/40" : ""}`}>
                         {parts ? (
                           <span className="block">
                             <span className="block whitespace-nowrap">{parts[0]}/</span>
                             <span className="block whitespace-nowrap">{parts.slice(1).join("/")}</span>
                           </span>
                         ) : h}
+                        {ci < 15 && <span className="column-resizer absolute -right-1 top-0 z-10 h-full w-2 cursor-col-resize" onPointerDown={(event) => {
+                          event.preventDefault(); const start = event.clientX;
+                          const move = (e: PointerEvent) => changeColumnWidth(ci, e.clientX - start);
+                          const up = () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); };
+                          window.addEventListener("pointermove", move, { once: true }); window.addEventListener("pointerup", up);
+                        }} />}
                       </th>
                     );
                   })}
                 </tr>
               </thead>
               <tbody>
-                {rows.map((r, i) => (
-                  <RowEditor key={r.id} index={i+1} row={r} accent={accent} lang={lang} lockCW={lockCW}
+                {page.map((r) => {
+                  const i = rows.findIndex((item) => item.id === r.id);
+                  return <RowEditor key={r.id} index={i+1} row={r} accent={accent} lang={lang} lockCW={lockCW}
+                    height={layout.rowHeights[r.id] ?? 112} columnStyles={layout.columnStyles} cellStyles={layout.cellStyles}
+                    selectedCell={selectedCell} onSelectCell={(col) => { setSelectedCell({ rowId: r.id, col }); setSelectedColumn(null); }}
+                    onHeightChange={(height) => setRowHeight(r.id, height)}
                     onChange={(p) => updateRow(r.id, p)}
                     onImage={(f) => onImage(r.id, f, "image")}
                     onPacking={(f) => onImage(r.id, f, "packing")}
                     onDuplicate={() => duplicateRow(r.id)}
                     onRemove={() => removeRow(r.id)}
                     onSend={() => setSendItem(r)}
-                  />
-                ))}
+                  />;
+                })}
               </tbody>
             </table>
           </div>
           {/* Notes + Totals */}
-          <div className="px-6 pt-3"><div className="text-end text-[13px] font-semibold">• {meta.notes}</div></div>
-          <div className="totals-row flex flex-wrap justify-end gap-3 px-6 py-4">
+          {pageIndex === pageRows.length - 1 && <><div className="px-6 pt-2"><div className="text-end text-[13px] font-semibold">• {meta.notes}</div></div>
+          <div className="totals-row flex justify-end gap-2 px-6 py-2">
             {[
               { l: t.totals.ctn, v: String(totals.tCtn) },
               { l: t.totals.cbm, v: totals.tCBM.toFixed(2) },
@@ -1007,12 +1040,12 @@ export default function ProformaApp() {
                 { l: "Total", v: String(+(totals.tAmount + invoiceTransport).toFixed(2)) },
               ] : []),
             ].map((c) => (
-              <div key={c.l} className="min-w-[160px] overflow-hidden rounded-md border" style={{ borderColor: accent }}>
-                <div className="px-3 py-1.5 text-center text-xs font-bold uppercase text-white" style={{ background: accent }}>{c.l}</div>
-                <div className="px-3 py-3 text-center text-2xl font-bold">{c.v}</div>
+              <div key={c.l} className="min-w-[130px] overflow-hidden rounded-md border" style={{ borderColor: accent }}>
+                <div className="px-2 py-1 text-center text-[10px] font-bold uppercase text-white" style={{ background: accent }}>{c.l}</div>
+                <div className="px-2 py-1.5 text-center text-lg font-bold">{c.v}</div>
               </div>
             ))}
-          </div>
+          </div></>}
           {/* Footer */}
           <div className="footer-block px-6 py-3 text-center text-white" style={{ background: accent }}>
             <Input value={meta.address} onChange={(e) => setMeta({ ...meta, address: e.target.value })} className="footer-input mx-auto h-7 max-w-3xl border-0 bg-transparent text-center text-[12px] font-medium text-white placeholder:text-white/70 shadow-none focus-visible:ring-0" />
@@ -1022,6 +1055,9 @@ export default function ProformaApp() {
             <Input value={meta.email} onChange={(e) => setMeta({ ...meta, email: e.target.value })} className="footer-input mx-auto h-7 max-w-xl border-0 bg-transparent text-center text-[11px] text-white shadow-none focus-visible:ring-0" />
             <div className="footer-text hidden text-[11px] leading-5">{meta.email || "\u00A0"}</div>
           </div>
+          <div className="absolute bottom-1 end-2 text-[9px] text-white/80">{pageIndex + 1} / {pageRows.length}</div>
+          </section>
+          ))}
         </div>
         <p className="mt-4 text-center text-xs text-muted-foreground print:hidden">{t.arabicTip}</p>
       </main>
