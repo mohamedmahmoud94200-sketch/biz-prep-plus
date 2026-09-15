@@ -1185,12 +1185,12 @@ function CellInput({ value, onChange, type = "text", align = "center", readOnly 
         value={value}
         readOnly={readOnly}
         onChange={(e) => onChange(e.target.value)}
-        className={`cell-input w-full rounded border border-input px-1.5 py-1 text-[12px] outline-none transition focus:border-foreground focus:ring-1 focus:ring-foreground/20 print:hidden ${readOnly ? "cursor-not-allowed bg-muted/50 text-muted-foreground" : "bg-white"}`}
-        style={{ textAlign: align }}
+        className={`cell-input w-full rounded border border-input px-1.5 py-1 outline-none transition focus:border-foreground focus:ring-1 focus:ring-foreground/20 print:hidden ${readOnly ? "cursor-not-allowed bg-muted/50 text-muted-foreground" : "bg-white"}`}
+        style={{ textAlign: align, fontSize: "inherit", fontWeight: "inherit" }}
       />
       <div
-        className="cell-text hidden whitespace-pre-wrap break-words px-1 py-1 text-[12px] leading-tight print:block"
-        style={{ textAlign: align }}
+        className="cell-text hidden whitespace-pre-wrap break-words px-1 py-1 leading-tight print:block"
+        style={{ textAlign: align, fontSize: "inherit", fontWeight: "inherit" }}
       >
         {value || "\u00A0"}
       </div>
@@ -1202,7 +1202,7 @@ function ImgCell({ src, onPick, icon }: { src: string; onPick: (f: File | null) 
   const [editSrc, setEditSrc] = useState<string | null>(null);
   return (
     <>
-      <button type="button" onClick={() => (src ? setEditSrc(src) : ref.current?.click())} className={`img-cell-btn mx-auto flex h-24 w-24 items-center justify-center overflow-hidden rounded border ${src ? "" : "border-dashed bg-muted/30"} hover:border-foreground`}>
+      <button type="button" onClick={() => (src ? setEditSrc(src) : ref.current?.click())} className={`img-cell-btn mx-auto flex h-[calc(100%-8px)] max-h-full w-[calc(100%-8px)] items-center justify-center overflow-hidden rounded border ${src ? "" : "border-dashed bg-muted/30"} hover:border-foreground`} style={{ minHeight: 64 }}>
         {src ? <img src={src} crossOrigin="anonymous" alt="" className="h-full w-full object-contain" /> : icon === "img" ? <ImageIcon className="h-4 w-4 text-muted-foreground" /> : <Package className="h-4 w-4 text-muted-foreground" />}
       </button>
       <input
