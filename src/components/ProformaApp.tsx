@@ -841,7 +841,8 @@ export default function ProformaApp() {
           if (comma < 0) continue;
           const extension = data.slice(0, comma).includes("png") ? "png" : "jpeg";
           const imageId = workbook.addImage({ base64: data.slice(comma + 1), extension });
-          sheet.addImage(imageId, { tl: { col: column - 1 + 0.08, row: index + 1 + 0.08 } as ExcelJS.Anchor, br: { col: column - 0.08, row: index + 1.92 } as ExcelJS.Anchor, editAs: "oneCell" });
+          const imageRange = { tl: { col: column - 1 + 0.08, row: index + 1 + 0.08 }, br: { col: column - 0.08, row: index + 1.92 }, editAs: "oneCell" };
+          sheet.addImage(imageId, imageRange as Parameters<typeof sheet.addImage>[1]);
         }
       }
       const buffer = await workbook.xlsx.writeBuffer();
@@ -1031,7 +1032,7 @@ export default function ProformaApp() {
                     const align = ci === 1 || ci === 2 ? "text-left" : "text-center";
                     const parts = h.includes("/") ? h.split("/") : null;
                     return (
-                      <th key={h} onClick={() => { if (ci < 15) { setSelectedColumn(ci); setSelectedCell(null); } }} className={`relative px-1 py-2.5 text-xs font-semibold uppercase leading-tight ${align} ${selectedColumn === ci ? "ring-2 ring-inset ring-foreground/40" : ""}`}>
+                      <th key={h} onClick={() => { if (ci < 15) { setSelectedColumn(ci); setSelectedCell(null); } }} className={`relative px-1 py-2.5 text-xs font-semibold uppercase leading-tight ${align} ${ci === 15 ? "actions-col" : ""} ${selectedColumn === ci ? "ring-2 ring-inset ring-foreground/40" : ""}`}>
                         {parts ? (
                           <span className="block">
                             <span className="block whitespace-nowrap">{parts[0]}/</span>
@@ -1126,6 +1127,9 @@ export default function ProformaApp() {
         #printable.export-capture .proforma-page { box-shadow: none !important; }
         #printable.export-capture .cell-input { display: none !important; }
         #printable.export-capture .cell-text { display: block !important; }
+        #printable.export-capture .meta-input, #printable.export-capture .footer-input { display: none !important; }
+        #printable.export-capture .meta-text, #printable.export-capture .footer-text { display: block !important; }
+        #printable.export-capture .footer-block { min-height: 82px !important; }
         #printable.export-capture .img-cell-btn { border-color: transparent !important; background: transparent !important; }
         #printable.export-capture input { border: none !important; background: transparent !important; box-shadow: none !important; }
         #printable.export-capture td { word-break: break-word; white-space: normal !important; vertical-align: middle !important; padding: 4px 3px !important; }
@@ -1185,12 +1189,12 @@ function CellInput({ value, onChange, type = "text", align = "center", readOnly 
         value={value}
         readOnly={readOnly}
         onChange={(e) => onChange(e.target.value)}
-        className={`cell-input w-full rounded border border-input px-1.5 py-1 text-[12px] outline-none transition focus:border-foreground focus:ring-1 focus:ring-foreground/20 print:hidden ${readOnly ? "cursor-not-allowed bg-muted/50 text-muted-foreground" : "bg-white"}`}
-        style={{ textAlign: align }}
+        className={`cell-input w-full rounded border border-input px-1.5 py-1 outline-none transition focus:border-foreground focus:ring-1 focus:ring-foreground/20 print:hidden ${readOnly ? "cursor-not-allowed bg-muted/50 text-muted-foreground" : "bg-white"}`}
+        style={{ textAlign: align, fontSize: "inherit", fontWeight: "inherit" }}
       />
       <div
-        className="cell-text hidden whitespace-pre-wrap break-words px-1 py-1 text-[12px] leading-tight print:block"
-        style={{ textAlign: align }}
+        className="cell-text hidden whitespace-pre-wrap break-words px-1 py-1 leading-tight print:block"
+        style={{ textAlign: align, fontSize: "inherit", fontWeight: "inherit" }}
       >
         {value || "\u00A0"}
       </div>
@@ -1202,7 +1206,7 @@ function ImgCell({ src, onPick, icon }: { src: string; onPick: (f: File | null) 
   const [editSrc, setEditSrc] = useState<string | null>(null);
   return (
     <>
-      <button type="button" onClick={() => (src ? setEditSrc(src) : ref.current?.click())} className={`img-cell-btn mx-auto flex h-24 w-24 items-center justify-center overflow-hidden rounded border ${src ? "" : "border-dashed bg-muted/30"} hover:border-foreground`}>
+      <button type="button" onClick={() => (src ? setEditSrc(src) : ref.current?.click())} className={`img-cell-btn mx-auto flex h-[calc(100%-8px)] max-h-full w-[calc(100%-8px)] items-center justify-center overflow-hidden rounded border ${src ? "" : "border-dashed bg-muted/30"} hover:border-foreground`} style={{ minHeight: 64 }}>
         {src ? <img src={src} crossOrigin="anonymous" alt="" className="h-full w-full object-contain" /> : icon === "img" ? <ImageIcon className="h-4 w-4 text-muted-foreground" /> : <Package className="h-4 w-4 text-muted-foreground" />}
       </button>
       <input
