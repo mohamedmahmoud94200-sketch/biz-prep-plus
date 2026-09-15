@@ -841,7 +841,8 @@ export default function ProformaApp() {
           if (comma < 0) continue;
           const extension = data.slice(0, comma).includes("png") ? "png" : "jpeg";
           const imageId = workbook.addImage({ base64: data.slice(comma + 1), extension });
-          sheet.addImage(imageId, { tl: { col: column - 1 + 0.08, row: index + 1 + 0.08 } as ExcelJS.Anchor, br: { col: column - 0.08, row: index + 1.92 } as ExcelJS.Anchor, editAs: "oneCell" });
+          const imageRange = { tl: { col: column - 1 + 0.08, row: index + 1 + 0.08 }, br: { col: column - 0.08, row: index + 1.92 }, editAs: "oneCell" };
+          sheet.addImage(imageId, imageRange as Parameters<typeof sheet.addImage>[1]);
         }
       }
       const buffer = await workbook.xlsx.writeBuffer();
