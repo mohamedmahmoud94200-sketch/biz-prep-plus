@@ -625,16 +625,8 @@ export default function ProformaApp() {
     setProformas((ps) => ps.map((p) => p.id === targetId ? { ...p, rows: p.rows.map((r) => (r.id === id ? { ...r, ...patch } : r)) } : p));
     markRowsDirty(targetId, [id], "image" in patch || "packing" in patch);
   };
-  const changeColumnWidth = (index: number, delta: number) => {
-    setLayout((current) => {
-      const widths = [...current.widths];
-      widths[index] = Math.max(24, Math.min(420, widths[index] + delta));
-      return { ...current, widths };
-    });
-  };
-  const setRowHeight = (rowId: string, height: number) => setLayout((current) => ({
-    ...current, rowHeights: { ...current.rowHeights, [rowId]: Math.max(72, Math.min(260, height)) },
-  }));
+  const setPageWidth = (width: number) => setLayout((current) => ({ ...current, pageWidth: Math.max(900, Math.min(1800, width)) }));
+
   const setSelectionFormat = (patch: TextFormat) => setLayout((current) => {
     if (selectedCell) {
       const key = `${selectedCell.rowId}:${selectedCell.col}`;
