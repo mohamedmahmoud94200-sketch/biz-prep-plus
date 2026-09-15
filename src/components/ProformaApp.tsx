@@ -616,19 +616,8 @@ export default function ProformaApp() {
     const tWt = +rows.reduce((s, r) => s + tWeight(r), 0).toFixed(2);
     return { tCtn, tAmount, tCBM, tWt };
   }, [rows]);
-  const pageRows = useMemo(() => {
-    const pages: Row[][] = [];
-    let page: Row[] = [];
-    let used = 0;
-    const available = 430;
-    rows.forEach((row) => {
-      const height = layout.rowHeights[row.id] ?? 112;
-      if (page.length > 0 && used + height > available) { pages.push(page); page = []; used = 0; }
-      page.push(row); used += height;
-    });
-    if (page.length > 0 || pages.length === 0) pages.push(page);
-    return pages;
-  }, [rows, layout.rowHeights]);
+
+
 
   const updateRow = (id: string, patch: Partial<Row>) => {
     const targetId = activeId || active?.id;
