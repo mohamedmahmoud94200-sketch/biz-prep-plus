@@ -1032,7 +1032,7 @@ export default function ProformaApp() {
                     const align = ci === 1 || ci === 2 ? "text-left" : "text-center";
                     const parts = h.includes("/") ? h.split("/") : null;
                     return (
-                      <th key={h} onClick={() => { if (ci < 15) { setSelectedColumn(ci); setSelectedCell(null); } }} className={`relative px-1 py-2.5 text-xs font-semibold uppercase leading-tight ${align} ${selectedColumn === ci ? "ring-2 ring-inset ring-foreground/40" : ""}`}>
+                      <th key={h} onClick={() => { if (ci < 15) { setSelectedColumn(ci); setSelectedCell(null); } }} className={`relative px-1 py-2.5 text-xs font-semibold uppercase leading-tight ${align} ${ci === 15 ? "actions-col" : ""} ${selectedColumn === ci ? "ring-2 ring-inset ring-foreground/40" : ""}`}>
                         {parts ? (
                           <span className="block">
                             <span className="block whitespace-nowrap">{parts[0]}/</span>
@@ -1127,6 +1127,9 @@ export default function ProformaApp() {
         #printable.export-capture .proforma-page { box-shadow: none !important; }
         #printable.export-capture .cell-input { display: none !important; }
         #printable.export-capture .cell-text { display: block !important; }
+        #printable.export-capture .meta-input, #printable.export-capture .footer-input { display: none !important; }
+        #printable.export-capture .meta-text, #printable.export-capture .footer-text { display: block !important; }
+        #printable.export-capture .footer-block { min-height: 82px !important; }
         #printable.export-capture .img-cell-btn { border-color: transparent !important; background: transparent !important; }
         #printable.export-capture input { border: none !important; background: transparent !important; box-shadow: none !important; }
         #printable.export-capture td { word-break: break-word; white-space: normal !important; vertical-align: middle !important; padding: 4px 3px !important; }
