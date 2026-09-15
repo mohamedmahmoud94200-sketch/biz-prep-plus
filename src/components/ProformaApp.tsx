@@ -19,9 +19,7 @@ type TextFormat = { fontSize?: number; bold?: boolean };
 type LayoutCfg = {
   fontSize: number;
   bold: boolean;
-  widths: number[];
-  zoom: number;
-  rowHeights: Record<string, number>;
+  pageWidth: number;
   columnStyles: TextFormat[];
   cellStyles: Record<string, TextFormat>;
 };
@@ -41,17 +39,17 @@ const CACHE_KEY = "proforma-cache-lite-v6";
 const DELETED_CACHE_KEY = "proforma-deleted-v1";
 const OLD_CACHE_KEYS = ["proforma-cache-full-v4", "proforma-cache-full-v3"];
 const DEFAULT_WIDTHS = [38, 130, 140, 183, 183, 55, 60, 60, 58, 68, 74, 52, 60, 52, 60];
-const DEFAULT_LAYOUT: LayoutCfg = { fontSize: 12, bold: false, widths: DEFAULT_WIDTHS, zoom: 100, rowHeights: {}, columnStyles: Array.from({ length: 15 }, () => ({})), cellStyles: {} };
+const WIDTH_TOTAL = DEFAULT_WIDTHS.reduce((a, b) => a + b, 0);
+const ROW_HEIGHT = 112;
+const emptyStyles = () => Array.from({ length: 15 }, () => ({} as TextFormat));
+const DEFAULT_LAYOUT: LayoutCfg = { fontSize: 12, bold: false, pageWidth: 1123, columnStyles: emptyStyles(), cellStyles: {} };
 const normalizeLayout = (raw: unknown): LayoutCfg => {
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return { ...DEFAULT_LAYOUT, widths: [...DEFAULT_WIDTHS], columnStyles: Array.from({ length: 15 }, () => ({})) };
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return { ...DEFAULT_LAYOUT, columnStyles: emptyStyles() };
   const value = raw as Partial<LayoutCfg>;
-  const widths = Array.isArray(value.widths) && value.widths.length === 15 ? value.widths : DEFAULT_WIDTHS;
-  const columnStyles = Array.isArray(value.columnStyles) && value.columnStyles.length === 15 ? value.columnStyles : Array.from({ length: 15 }, () => ({}));
+  const columnStyles = Array.isArray(value.columnStyles) && value.columnStyles.length === 15 ? value.columnStyles : emptyStyles();
   return {
     fontSize: Math.max(8, Math.min(22, Number(value.fontSize) || 12)), bold: !!value.bold,
-    widths: widths.map((w) => Math.max(24, Math.min(420, Number(w) || 60))),
-    zoom: Math.max(55, Math.min(120, Number(value.zoom) || 100)),
-    rowHeights: value.rowHeights && typeof value.rowHeights === "object" ? value.rowHeights : {},
+    pageWidth: Math.max(900, Math.min(1800, Number(value.pageWidth) || 1123)),
     columnStyles, cellStyles: value.cellStyles && typeof value.cellStyles === "object" ? value.cellStyles : {},
   };
 };
