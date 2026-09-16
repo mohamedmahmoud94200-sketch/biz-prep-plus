@@ -1140,12 +1140,9 @@ export default function ProformaApp() {
         }
       `}</style>
 
-      <style>{(() => {
-        const total = layout.widths.reduce((a, b) => a + b, 0) || 1;
-        const cols = layout.widths.map((w, i) => `#printable.export-capture th:nth-child(${i + 1}), #printable.export-capture td:nth-child(${i + 1}) { width: ${(w / total * 1123).toFixed(2)}px !important; max-width: ${(w / total * 1123).toFixed(2)}px !important; }
-        @media print { #printable th:nth-child(${i + 1}), #printable td:nth-child(${i + 1}) { width: ${(w / total * 100).toFixed(2)}% !important; max-width: none !important; } }`).join("\n");
-        return `${cols}`;
-      })()}</style>
+      <style>{DEFAULT_WIDTHS.map((w, i) => `#printable.export-capture th:nth-child(${i + 1}), #printable.export-capture td:nth-child(${i + 1}) { width: ${(w / WIDTH_TOTAL * layout.pageWidth).toFixed(2)}px !important; max-width: ${(w / WIDTH_TOTAL * layout.pageWidth).toFixed(2)}px !important; }
+        @media print { #printable th:nth-child(${i + 1}), #printable td:nth-child(${i + 1}) { width: ${(w / WIDTH_TOTAL * 100).toFixed(2)}% !important; max-width: none !important; } }`).join("\n")}</style>
+
 
       {showCompany && (
         <CompanyModal meta={meta} accent={accent} lang={lang}
@@ -1278,10 +1275,10 @@ function ImageAdjuster({ src, onDone, onCancel, onPickFile }: { src: string; onD
     </div>
   );
 }
-function RowEditor({ index, row, accent, lang, lockCW = false, height, columnStyles, cellStyles, selectedCell, onSelectCell, onHeightChange, onChange, onImage, onPacking, onDuplicate, onRemove, onSend }:
+function RowEditor({ index, row, accent, lang, lockCW = false, columnStyles, cellStyles, selectedCell, onSelectCell, onChange, onImage, onPacking, onDuplicate, onRemove, onSend }:
   { index: number; row: Row; accent: string; lang: Lang; lockCW?: boolean;
-    height: number; columnStyles: TextFormat[]; cellStyles: Record<string, TextFormat>; selectedCell: { rowId: string; col: number } | null;
-    onSelectCell: (col: number) => void; onHeightChange: (height: number) => void;
+    columnStyles: TextFormat[]; cellStyles: Record<string, TextFormat>; selectedCell: { rowId: string; col: number } | null;
+    onSelectCell: (col: number) => void;
     onChange: (p: Partial<Row>) => void; onImage: (f: File | null) => void; onPacking: (f: File | null) => void;
     onDuplicate: () => void; onRemove: () => void; onSend: () => void; }) {
   const amt = amount(row); const tc = tCbm(row); const tw = tWeight(row);
@@ -1292,7 +1289,7 @@ function RowEditor({ index, row, accent, lang, lockCW = false, height, columnSty
   };
   const cellClass = (col: number) => selectedCell?.rowId === row.id && selectedCell.col === col ? "ring-2 ring-inset ring-foreground/40" : "";
   return (
-    <tr className="relative border-b align-middle hover:bg-muted/20" style={{ height }}>
+    <tr className="relative border-b align-middle hover:bg-muted/20" style={{ height: ROW_HEIGHT }}>
       <td onClick={() => onSelectCell(0)} className={`px-1 text-center text-xs font-semibold text-muted-foreground ${cellClass(0)}`} style={styleFor(0)}>{index}</td>
       <td onClick={() => onSelectCell(1)} className={`px-1 ${cellClass(1)}`} style={styleFor(1)}><CellInput value={row.itemName} onChange={(v) => onChange({ itemName: v })} align="left" /></td>
       <td onClick={() => onSelectCell(2)} className={`px-1 ${cellClass(2)}`} style={styleFor(2)}><CellInput value={row.description} onChange={(v) => onChange({ description: v })} align="left" /></td>
@@ -1314,12 +1311,6 @@ function RowEditor({ index, row, accent, lang, lockCW = false, height, columnSty
           <button onClick={onDuplicate} title={tt.duplicate} className="rounded p-1 hover:bg-muted"><Copy className="h-3.5 w-3.5" /></button>
           <button onClick={onRemove} title={tt.delete} className="rounded p-1 text-destructive hover:bg-destructive/10"><Trash2 className="h-3.5 w-3.5" /></button>
         </div>
-        <span className="row-resizer absolute bottom-0 left-0 h-2 w-full cursor-row-resize" onPointerDown={(event) => {
-          event.preventDefault(); const start = event.clientY; const initial = height;
-          const move = (e: PointerEvent) => onHeightChange(initial + e.clientY - start);
-          const up = () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); };
-          window.addEventListener("pointermove", move); window.addEventListener("pointerup", up);
-        }} />
       </td>
     </tr>
   );
