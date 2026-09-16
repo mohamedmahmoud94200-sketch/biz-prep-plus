@@ -765,12 +765,16 @@ export default function ProformaApp() {
     toast.message(lang === "ar" ? "بنحضّر الملف…" : "Preparing PDF…");
     try {
       const [{ default: jsPDF }, canvases] = await Promise.all([import("jspdf"), capturePages(invoiceOnly, transport)]);
-      const pdf = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
-      const pageW = pdf.internal.pageSize.getWidth();
-      const pageH = pdf.internal.pageSize.getHeight();
+      const first = canvases[0];
+      if (!first) return;
+      // page size follows the preview exactly, so nothing is cropped or stretched
+      const pageW = 1123;
+      const pageH = Math.round((first.height / first.width) * pageW);
+      const pdf = new jsPDF({ orientation: pageH > pageW ? "portrait" : "landscape", unit: "pt", format: [pageW, pageH] });
       canvases.forEach((canvas, index) => {
-        if (index > 0) pdf.addPage("a4", "landscape");
-        pdf.addImage(canvas.toDataURL("image/jpeg", 0.96), "JPEG", 0, 0, pageW, pageH, undefined, "FAST");
+        const h = Math.round((canvas.height / canvas.width) * pageW);
+        if (index > 0) pdf.addPage([pageW, h], h > pageW ? "portrait" : "landscape");
+        pdf.addImage(canvas.toDataURL("image/jpeg", 0.96), "JPEG", 0, 0, pageW, h, undefined, "FAST");
       });
       pdf.save(`${invoiceOnly ? "Invoice" : (meta.title || "proforma")}-${meta.customer || "customer"}.pdf`);
       toast.success("PDF ✓");
@@ -782,11 +786,17 @@ export default function ProformaApp() {
 
   const exportPPTX = async (invoiceOnly = false, transport = 0) => {
     const { default: PptxGenJS } = await import("pptxgenjs");
-    const pptx = new PptxGenJS(); pptx.layout = "LAYOUT_WIDE"; pptx.title = meta.title;
+    const pptx = new PptxGenJS(); pptx.title = meta.title;
     const canvases = await capturePages(invoiceOnly, transport);
+    const first = canvases[0];
+    if (!first) return;
+    const slideW = 13.333;
+    const slideH = +((first.height / first.width) * slideW).toFixed(2);
+    pptx.defineLayout({ name: "PREVIEW", width: slideW, height: slideH });
+    pptx.layout = "PREVIEW";
     canvases.forEach((canvas) => {
       const slide = pptx.addSlide();
-      slide.addImage({ data: canvas.toDataURL("image/jpeg", 0.96), x: 0, y: 0, w: 13.333, h: 7.5 });
+      slide.addImage({ data: canvas.toDataURL("image/jpeg", 0.96), x: 0, y: 0, w: slideW, h: +((canvas.height / canvas.width) * slideW).toFixed(2) });
     });
     await pptx.writeFile({ fileName: `${invoiceOnly ? "Invoice" : (meta.title || "proforma")}-${meta.customer || "customer"}.pptx` });
     toast.success("PPTX ✓");
