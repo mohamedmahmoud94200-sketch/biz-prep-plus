@@ -1191,7 +1191,7 @@ function ImgCell({ src, onPick, icon }: { src: string; onPick: (f: File | null) 
   const [editSrc, setEditSrc] = useState<string | null>(null);
   return (
     <>
-      <button type="button" onClick={() => (src ? setEditSrc(src) : ref.current?.click())} className={`img-cell-btn mx-auto flex h-[calc(100%-8px)] max-h-full w-[calc(100%-8px)] items-center justify-center overflow-hidden rounded border ${src ? "" : "border-dashed bg-muted/30"} hover:border-foreground`} style={{ minHeight: 64 }}>
+      <button type="button" onClick={() => (src ? setEditSrc(src) : ref.current?.click())} className={`img-cell-btn mx-auto flex w-[calc(100%-8px)] items-center justify-center overflow-hidden rounded border ${src ? "" : "border-dashed bg-muted/30"} hover:border-foreground`} style={{ height: ROW_HEIGHT - 12, maxHeight: ROW_HEIGHT - 12 }}>
         {src ? <img src={src} crossOrigin="anonymous" alt="" className="h-full w-full object-contain" /> : icon === "img" ? <ImageIcon className="h-4 w-4 text-muted-foreground" /> : <Package className="h-4 w-4 text-muted-foreground" />}
       </button>
       <input
