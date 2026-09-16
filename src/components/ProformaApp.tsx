@@ -970,9 +970,8 @@ export default function ProformaApp() {
 
       {/* SHEET */}
       <main className="overflow-x-auto px-4 py-6 print:p-0">
-        <div id="printable" className="mx-auto flex w-fit flex-col gap-6 print:gap-0" style={{ zoom: `${layout.zoom}%` }}>
-          {pageRows.map((page, pageIndex) => (
-          <section key={pageIndex} className="proforma-page relative flex h-[794px] w-[1123px] shrink-0 flex-col overflow-hidden bg-white shadow-lg print:shadow-none">
+        <div id="printable" className="mx-auto flex w-fit flex-col print:gap-0">
+          <section className="proforma-page relative flex shrink-0 flex-col overflow-hidden bg-white shadow-lg print:shadow-none" style={{ width: layout.pageWidth }}>
           {/* Banner */}
           <div className="relative flex items-center justify-between px-6 py-3" style={{ background: accent }}>
             <button type="button" onClick={() => logoRef.current?.click()} className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-md bg-white text-[10px] font-bold uppercase leading-tight shadow" style={{ color: accent }} title="Upload logo">
@@ -999,8 +998,8 @@ export default function ProformaApp() {
             <table className="w-full border-collapse" dir="ltr"
               style={{ tableLayout: "fixed", fontSize: `${layout.fontSize}px`, fontWeight: layout.bold ? 700 : undefined }}>
               <colgroup>
-                {layout.widths.map((w, i) => (
-                  <col key={i} style={{ width: `${(w / layout.widths.reduce((a, b) => a + b, 0)) * 1053}px` }} />
+                {DEFAULT_WIDTHS.map((w, i) => (
+                  <col key={i} style={{ width: `${((w / WIDTH_TOTAL) * (layout.pageWidth - 70)).toFixed(2)}px` }} />
                 ))}
                 <col className="actions-col" style={{ width: "70px" }} />
               </colgroup>
@@ -1018,24 +1017,16 @@ export default function ProformaApp() {
                             <span className="block whitespace-nowrap">{parts.slice(1).join("/")}</span>
                           </span>
                         ) : h}
-                        {ci < 15 && <span className="column-resizer absolute -right-1 top-0 z-10 h-full w-2 cursor-col-resize" onPointerDown={(event) => {
-                          event.preventDefault(); let last = event.clientX;
-                          const move = (e: PointerEvent) => { changeColumnWidth(ci, e.clientX - last); last = e.clientX; };
-                          const up = () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); };
-                          window.addEventListener("pointermove", move); window.addEventListener("pointerup", up);
-                        }} />}
                       </th>
                     );
                   })}
                 </tr>
               </thead>
               <tbody>
-                {page.map((r) => {
-                  const i = rows.findIndex((item) => item.id === r.id);
+                {rows.map((r, i) => {
                   return <RowEditor key={r.id} index={i+1} row={r} accent={accent} lang={lang} lockCW={lockCW}
-                    height={layout.rowHeights[r.id] ?? 112} columnStyles={layout.columnStyles} cellStyles={layout.cellStyles}
+                    columnStyles={layout.columnStyles} cellStyles={layout.cellStyles}
                     selectedCell={selectedCell} onSelectCell={(col) => { setSelectedCell({ rowId: r.id, col }); setSelectedColumn(null); }}
-                    onHeightChange={(height) => setRowHeight(r.id, height)}
                     onChange={(p) => updateRow(r.id, p)}
                     onImage={(f) => onImage(r.id, f, "image")}
                     onPacking={(f) => onImage(r.id, f, "packing")}
@@ -1048,7 +1039,7 @@ export default function ProformaApp() {
             </table>
           </div>
           {/* Notes + Totals */}
-          {pageIndex === pageRows.length - 1 && <><div className="px-6 pt-2"><div className="text-end text-[13px] font-semibold">• {meta.notes}</div></div>
+          <div className="px-6 pt-2"><div className="text-end text-[13px] font-semibold">• {meta.notes}</div></div>
           <div className="totals-row flex justify-end gap-2 px-6 py-2">
             {[
               { l: t.totals.ctn, v: String(totals.tCtn) },
@@ -1065,7 +1056,7 @@ export default function ProformaApp() {
                 <div className="px-2 py-1.5 text-center text-lg font-bold">{c.v}</div>
               </div>
             ))}
-          </div></>}
+          </div>
           {/* Footer */}
           <div className="footer-block px-6 py-3 text-center text-white" style={{ background: accent }}>
             <Input value={meta.address} onChange={(e) => setMeta({ ...meta, address: e.target.value })} className="footer-input mx-auto h-7 max-w-3xl border-0 bg-transparent text-center text-[12px] font-medium text-white placeholder:text-white/70 shadow-none focus-visible:ring-0" />
@@ -1075,9 +1066,7 @@ export default function ProformaApp() {
             <Input value={meta.email} onChange={(e) => setMeta({ ...meta, email: e.target.value })} className="footer-input mx-auto h-7 max-w-xl border-0 bg-transparent text-center text-[11px] text-white shadow-none focus-visible:ring-0" />
             <div className="footer-text hidden text-[11px] leading-5">{meta.email || "\u00A0"}</div>
           </div>
-          <div className="absolute bottom-1 end-2 text-[9px] text-white/80">{pageIndex + 1} / {pageRows.length}</div>
           </section>
-          ))}
         </div>
         <p className="mt-4 text-center text-xs text-muted-foreground print:hidden">{t.arabicTip}</p>
       </main>
