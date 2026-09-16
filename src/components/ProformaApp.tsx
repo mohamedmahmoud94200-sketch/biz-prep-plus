@@ -802,11 +802,11 @@ export default function ProformaApp() {
       sheet.addRow(heads);
       sheet.getRow(1).height = 30;
       sheet.getRow(1).eachCell((cell) => { cell.font = { bold: true, color: { argb: "FFFFFFFF" } }; cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: `FF${themeColor}` } }; cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true }; });
-      sheet.columns = layout.widths.map((width) => ({ width: Math.max(5, width / 7) }));
+      sheet.columns = DEFAULT_WIDTHS.map((width) => ({ width: Math.max(5, (width / WIDTH_TOTAL) * (layout.pageWidth - 70) / 7) }));
       for (let index = 0; index < rows.length; index++) {
         const row = rows[index];
         const excelRow = sheet.addRow([index + 1, row.itemName, row.description, "", "", row.ctn, row.dozCtn, row.setCtn, row.pcsSet, row.pricePerCtn, amount(row) || "", row.cbm, tCbm(row) || "", row.weight, tWeight(row) || ""]);
-        excelRow.height = Math.max(55, (layout.rowHeights[row.id] ?? 112) * 0.75);
+        excelRow.height = ROW_HEIGHT * 0.75;
         excelRow.eachCell((cell, column) => {
           const style = { ...layout.columnStyles[column - 1], ...layout.cellStyles[`${row.id}:${column - 1}`] };
           cell.font = { name: "Arial", size: style.fontSize ?? layout.fontSize, bold: style.bold ?? layout.bold };
@@ -820,7 +820,15 @@ export default function ProformaApp() {
           if (comma < 0) continue;
           const extension = data.slice(0, comma).includes("png") ? "png" : "jpeg";
           const imageId = workbook.addImage({ base64: data.slice(comma + 1), extension });
-          const imageRange = { tl: { col: column - 1 + 0.08, row: index + 1 + 0.08 }, br: { col: column - 0.08, row: index + 1.92 }, editAs: "oneCell" };
+          // keep the picture square and centred inside the cell, exactly like the preview
+          const colPx = (DEFAULT_WIDTHS[column - 1] / WIDTH_TOTAL) * (layout.pageWidth - 70);
+          const rowPx = ROW_HEIGHT;
+          const side = Math.max(24, Math.min(colPx, rowPx) - 8);
+          const imageRange = {
+            tl: { col: column - 1 + (colPx - side) / 2 / colPx, row: index + 1 + (rowPx - side) / 2 / rowPx },
+            ext: { width: side, height: side },
+            editAs: "oneCell",
+          };
           sheet.addImage(imageId, imageRange as Parameters<typeof sheet.addImage>[1]);
         }
       }
@@ -884,27 +892,16 @@ export default function ProformaApp() {
                     <span className="w-10 text-end text-xs">{layout.fontSize}px</span>
                   </div>
                   <div className="mb-3 flex items-center gap-2">
-                    <span className="w-20 text-xs font-semibold">{lang === "ar" ? "حجم المعاينة" : "Preview size"}</span>
-                    <input type="range" min={55} max={120} step={5} value={layout.zoom}
-                      onChange={(e) => setLayout((l) => ({ ...l, zoom: Number(e.target.value) }))} className="flex-1" />
-                    <span className="w-10 text-end text-xs">{layout.zoom}%</span>
+                    <span className="w-20 text-xs font-semibold">{lang === "ar" ? "عرض الصفحة" : "Page width"}</span>
+                    <input type="range" min={900} max={1800} step={10} value={layout.pageWidth}
+                      onChange={(e) => setPageWidth(Number(e.target.value))} className="flex-1" />
+                    <span className="w-12 text-end text-xs">{layout.pageWidth}px</span>
                   </div>
                   <label className="mb-3 flex cursor-pointer items-center gap-2 text-xs font-semibold">
                     <input type="checkbox" checked={layout.bold} onChange={(e) => setLayout((l) => ({ ...l, bold: e.target.checked }))} style={{ accentColor: accent }} />
                     {lang === "ar" ? "خط عريض (Bold)" : "Bold text"}
                   </label>
-                  <div className="mb-1 text-xs font-semibold">{lang === "ar" ? "عرض الأعمدة" : "Column widths"}</div>
-                  <div className="space-y-1.5">
-                    {layout.widths.map((w, i) => (
-                      <div key={i} className="flex items-center gap-2">
-                        <span className="w-20 truncate text-[11px] text-muted-foreground">{t.cols[i]}</span>
-                        <input type="range" min={20} max={320} step={2} value={w}
-                          onChange={(e) => setLayout((l) => { const ws = [...l.widths]; ws[i] = parseInt(e.target.value, 10); return { ...l, widths: ws }; })}
-                          className="flex-1" />
-                        <span className="w-8 text-end text-[11px]">{w}</span>
-                      </div>
-                    ))}
-                  </div>
+
                   <div className="mt-3 border-t pt-3">
                     <div className="mb-2 text-xs font-semibold">
                       {selectedCell ? (lang === "ar" ? "تنسيق الخلية المحددة" : "Selected cell") : selectedColumn !== null ? `${lang === "ar" ? "تنسيق عمود" : "Column"} ${t.cols[selectedColumn]}` : (lang === "ar" ? "التنسيق العام" : "General format")}
