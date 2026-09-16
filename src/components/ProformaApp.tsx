@@ -1153,15 +1153,28 @@ export default function ProformaApp() {
 
 function CellInput({ value, onChange, type = "text", align = "center", readOnly = false }: { value: string; onChange: (v: string) => void; type?: string; align?: "left"|"center"|"right"; readOnly?: boolean }) {
   const inputType = type === "number" ? "text" : type;
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [overflow, setOverflow] = useState(false);
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    const check = () => setOverflow(el.scrollWidth > el.clientWidth + 1);
+    check();
+    const observer = new ResizeObserver(check);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [value]);
   return (
     <>
       <input
+        ref={inputRef}
         type={inputType}
         inputMode={type === "number" ? "decimal" : undefined}
         value={value}
         readOnly={readOnly}
         onChange={(e) => onChange(e.target.value)}
-        className={`cell-input w-full rounded border border-input px-1.5 py-1 outline-none transition focus:border-foreground focus:ring-1 focus:ring-foreground/20 print:hidden ${readOnly ? "cursor-not-allowed bg-muted/50 text-muted-foreground" : "bg-white"}`}
+        title={overflow ? "النص أكبر من المربع / text is wider than the cell" : undefined}
+        className={`cell-input w-full rounded border px-1.5 py-1 outline-none transition focus:ring-1 focus:ring-foreground/20 print:hidden ${overflow ? "border-red-500 ring-1 ring-red-400" : "border-input focus:border-foreground"} ${readOnly ? "cursor-not-allowed bg-muted/50 text-muted-foreground" : "bg-white"}`}
         style={{ textAlign: align, fontSize: "inherit", fontWeight: "inherit" }}
       />
       <div
