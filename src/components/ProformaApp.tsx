@@ -765,12 +765,16 @@ export default function ProformaApp() {
     toast.message(lang === "ar" ? "بنحضّر الملف…" : "Preparing PDF…");
     try {
       const [{ default: jsPDF }, canvases] = await Promise.all([import("jspdf"), capturePages(invoiceOnly, transport)]);
-      const pdf = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
-      const pageW = pdf.internal.pageSize.getWidth();
-      const pageH = pdf.internal.pageSize.getHeight();
+      const first = canvases[0];
+      if (!first) return;
+      // page size follows the preview exactly, so nothing is cropped or stretched
+      const pageW = 1123;
+      const pageH = Math.round((first.height / first.width) * pageW);
+      const pdf = new jsPDF({ orientation: pageH > pageW ? "portrait" : "landscape", unit: "pt", format: [pageW, pageH] });
       canvases.forEach((canvas, index) => {
-        if (index > 0) pdf.addPage("a4", "landscape");
-        pdf.addImage(canvas.toDataURL("image/jpeg", 0.96), "JPEG", 0, 0, pageW, pageH, undefined, "FAST");
+        const h = Math.round((canvas.height / canvas.width) * pageW);
+        if (index > 0) pdf.addPage([pageW, h], h > pageW ? "portrait" : "landscape");
+        pdf.addImage(canvas.toDataURL("image/jpeg", 0.96), "JPEG", 0, 0, pageW, h, undefined, "FAST");
       });
       pdf.save(`${invoiceOnly ? "Invoice" : (meta.title || "proforma")}-${meta.customer || "customer"}.pdf`);
       toast.success("PDF ✓");
@@ -782,11 +786,17 @@ export default function ProformaApp() {
 
   const exportPPTX = async (invoiceOnly = false, transport = 0) => {
     const { default: PptxGenJS } = await import("pptxgenjs");
-    const pptx = new PptxGenJS(); pptx.layout = "LAYOUT_WIDE"; pptx.title = meta.title;
+    const pptx = new PptxGenJS(); pptx.title = meta.title;
     const canvases = await capturePages(invoiceOnly, transport);
+    const first = canvases[0];
+    if (!first) return;
+    const slideW = 13.333;
+    const slideH = +((first.height / first.width) * slideW).toFixed(2);
+    pptx.defineLayout({ name: "PREVIEW", width: slideW, height: slideH });
+    pptx.layout = "PREVIEW";
     canvases.forEach((canvas) => {
       const slide = pptx.addSlide();
-      slide.addImage({ data: canvas.toDataURL("image/jpeg", 0.96), x: 0, y: 0, w: 13.333, h: 7.5 });
+      slide.addImage({ data: canvas.toDataURL("image/jpeg", 0.96), x: 0, y: 0, w: slideW, h: +((canvas.height / canvas.width) * slideW).toFixed(2) });
     });
     await pptx.writeFile({ fileName: `${invoiceOnly ? "Invoice" : (meta.title || "proforma")}-${meta.customer || "customer"}.pptx` });
     toast.success("PPTX ✓");
@@ -802,11 +812,11 @@ export default function ProformaApp() {
       sheet.addRow(heads);
       sheet.getRow(1).height = 30;
       sheet.getRow(1).eachCell((cell) => { cell.font = { bold: true, color: { argb: "FFFFFFFF" } }; cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: `FF${themeColor}` } }; cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true }; });
-      sheet.columns = layout.widths.map((width) => ({ width: Math.max(5, width / 7) }));
+      sheet.columns = DEFAULT_WIDTHS.map((width) => ({ width: Math.max(5, (width / WIDTH_TOTAL) * (layout.pageWidth - 70) / 7) }));
       for (let index = 0; index < rows.length; index++) {
         const row = rows[index];
         const excelRow = sheet.addRow([index + 1, row.itemName, row.description, "", "", row.ctn, row.dozCtn, row.setCtn, row.pcsSet, row.pricePerCtn, amount(row) || "", row.cbm, tCbm(row) || "", row.weight, tWeight(row) || ""]);
-        excelRow.height = Math.max(55, (layout.rowHeights[row.id] ?? 112) * 0.75);
+        excelRow.height = ROW_HEIGHT * 0.75;
         excelRow.eachCell((cell, column) => {
           const style = { ...layout.columnStyles[column - 1], ...layout.cellStyles[`${row.id}:${column - 1}`] };
           cell.font = { name: "Arial", size: style.fontSize ?? layout.fontSize, bold: style.bold ?? layout.bold };
@@ -820,7 +830,15 @@ export default function ProformaApp() {
           if (comma < 0) continue;
           const extension = data.slice(0, comma).includes("png") ? "png" : "jpeg";
           const imageId = workbook.addImage({ base64: data.slice(comma + 1), extension });
-          const imageRange = { tl: { col: column - 1 + 0.08, row: index + 1 + 0.08 }, br: { col: column - 0.08, row: index + 1.92 }, editAs: "oneCell" };
+          // keep the picture square and centred inside the cell, exactly like the preview
+          const colPx = (DEFAULT_WIDTHS[column - 1] / WIDTH_TOTAL) * (layout.pageWidth - 70);
+          const rowPx = ROW_HEIGHT;
+          const side = Math.max(24, Math.min(colPx, rowPx) - 8);
+          const imageRange = {
+            tl: { col: column - 1 + (colPx - side) / 2 / colPx, row: index + 1 + (rowPx - side) / 2 / rowPx },
+            ext: { width: side, height: side },
+            editAs: "oneCell",
+          };
           sheet.addImage(imageId, imageRange as Parameters<typeof sheet.addImage>[1]);
         }
       }
@@ -884,27 +902,16 @@ export default function ProformaApp() {
                     <span className="w-10 text-end text-xs">{layout.fontSize}px</span>
                   </div>
                   <div className="mb-3 flex items-center gap-2">
-                    <span className="w-20 text-xs font-semibold">{lang === "ar" ? "حجم المعاينة" : "Preview size"}</span>
-                    <input type="range" min={55} max={120} step={5} value={layout.zoom}
-                      onChange={(e) => setLayout((l) => ({ ...l, zoom: Number(e.target.value) }))} className="flex-1" />
-                    <span className="w-10 text-end text-xs">{layout.zoom}%</span>
+                    <span className="w-20 text-xs font-semibold">{lang === "ar" ? "عرض الصفحة" : "Page width"}</span>
+                    <input type="range" min={900} max={1800} step={10} value={layout.pageWidth}
+                      onChange={(e) => setPageWidth(Number(e.target.value))} className="flex-1" />
+                    <span className="w-12 text-end text-xs">{layout.pageWidth}px</span>
                   </div>
                   <label className="mb-3 flex cursor-pointer items-center gap-2 text-xs font-semibold">
                     <input type="checkbox" checked={layout.bold} onChange={(e) => setLayout((l) => ({ ...l, bold: e.target.checked }))} style={{ accentColor: accent }} />
                     {lang === "ar" ? "خط عريض (Bold)" : "Bold text"}
                   </label>
-                  <div className="mb-1 text-xs font-semibold">{lang === "ar" ? "عرض الأعمدة" : "Column widths"}</div>
-                  <div className="space-y-1.5">
-                    {layout.widths.map((w, i) => (
-                      <div key={i} className="flex items-center gap-2">
-                        <span className="w-20 truncate text-[11px] text-muted-foreground">{t.cols[i]}</span>
-                        <input type="range" min={20} max={320} step={2} value={w}
-                          onChange={(e) => setLayout((l) => { const ws = [...l.widths]; ws[i] = parseInt(e.target.value, 10); return { ...l, widths: ws }; })}
-                          className="flex-1" />
-                        <span className="w-8 text-end text-[11px]">{w}</span>
-                      </div>
-                    ))}
-                  </div>
+
                   <div className="mt-3 border-t pt-3">
                     <div className="mb-2 text-xs font-semibold">
                       {selectedCell ? (lang === "ar" ? "تنسيق الخلية المحددة" : "Selected cell") : selectedColumn !== null ? `${lang === "ar" ? "تنسيق عمود" : "Column"} ${t.cols[selectedColumn]}` : (lang === "ar" ? "التنسيق العام" : "General format")}
@@ -970,9 +977,8 @@ export default function ProformaApp() {
 
       {/* SHEET */}
       <main className="overflow-x-auto px-4 py-6 print:p-0">
-        <div id="printable" className="mx-auto flex w-fit flex-col gap-6 print:gap-0" style={{ zoom: `${layout.zoom}%` }}>
-          {pageRows.map((page, pageIndex) => (
-          <section key={pageIndex} className="proforma-page relative flex h-[794px] w-[1123px] shrink-0 flex-col overflow-hidden bg-white shadow-lg print:shadow-none">
+        <div id="printable" className="mx-auto flex w-fit flex-col print:gap-0">
+          <section className="proforma-page relative flex shrink-0 flex-col overflow-hidden bg-white shadow-lg print:shadow-none" style={{ width: layout.pageWidth }}>
           {/* Banner */}
           <div className="relative flex items-center justify-between px-6 py-3" style={{ background: accent }}>
             <button type="button" onClick={() => logoRef.current?.click()} className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-md bg-white text-[10px] font-bold uppercase leading-tight shadow" style={{ color: accent }} title="Upload logo">
@@ -999,8 +1005,8 @@ export default function ProformaApp() {
             <table className="w-full border-collapse" dir="ltr"
               style={{ tableLayout: "fixed", fontSize: `${layout.fontSize}px`, fontWeight: layout.bold ? 700 : undefined }}>
               <colgroup>
-                {layout.widths.map((w, i) => (
-                  <col key={i} style={{ width: `${(w / layout.widths.reduce((a, b) => a + b, 0)) * 1053}px` }} />
+                {DEFAULT_WIDTHS.map((w, i) => (
+                  <col key={i} style={{ width: `${((w / WIDTH_TOTAL) * (layout.pageWidth - 70)).toFixed(2)}px` }} />
                 ))}
                 <col className="actions-col" style={{ width: "70px" }} />
               </colgroup>
@@ -1018,24 +1024,16 @@ export default function ProformaApp() {
                             <span className="block whitespace-nowrap">{parts.slice(1).join("/")}</span>
                           </span>
                         ) : h}
-                        {ci < 15 && <span className="column-resizer absolute -right-1 top-0 z-10 h-full w-2 cursor-col-resize" onPointerDown={(event) => {
-                          event.preventDefault(); let last = event.clientX;
-                          const move = (e: PointerEvent) => { changeColumnWidth(ci, e.clientX - last); last = e.clientX; };
-                          const up = () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); };
-                          window.addEventListener("pointermove", move); window.addEventListener("pointerup", up);
-                        }} />}
                       </th>
                     );
                   })}
                 </tr>
               </thead>
               <tbody>
-                {page.map((r) => {
-                  const i = rows.findIndex((item) => item.id === r.id);
+                {rows.map((r, i) => {
                   return <RowEditor key={r.id} index={i+1} row={r} accent={accent} lang={lang} lockCW={lockCW}
-                    height={layout.rowHeights[r.id] ?? 112} columnStyles={layout.columnStyles} cellStyles={layout.cellStyles}
+                    columnStyles={layout.columnStyles} cellStyles={layout.cellStyles}
                     selectedCell={selectedCell} onSelectCell={(col) => { setSelectedCell({ rowId: r.id, col }); setSelectedColumn(null); }}
-                    onHeightChange={(height) => setRowHeight(r.id, height)}
                     onChange={(p) => updateRow(r.id, p)}
                     onImage={(f) => onImage(r.id, f, "image")}
                     onPacking={(f) => onImage(r.id, f, "packing")}
@@ -1048,7 +1046,7 @@ export default function ProformaApp() {
             </table>
           </div>
           {/* Notes + Totals */}
-          {pageIndex === pageRows.length - 1 && <><div className="px-6 pt-2"><div className="text-end text-[13px] font-semibold">• {meta.notes}</div></div>
+          <div className="px-6 pt-2"><div className="text-end text-[13px] font-semibold">• {meta.notes}</div></div>
           <div className="totals-row flex justify-end gap-2 px-6 py-2">
             {[
               { l: t.totals.ctn, v: String(totals.tCtn) },
@@ -1065,7 +1063,7 @@ export default function ProformaApp() {
                 <div className="px-2 py-1.5 text-center text-lg font-bold">{c.v}</div>
               </div>
             ))}
-          </div></>}
+          </div>
           {/* Footer */}
           <div className="footer-block px-6 py-3 text-center text-white" style={{ background: accent }}>
             <Input value={meta.address} onChange={(e) => setMeta({ ...meta, address: e.target.value })} className="footer-input mx-auto h-7 max-w-3xl border-0 bg-transparent text-center text-[12px] font-medium text-white placeholder:text-white/70 shadow-none focus-visible:ring-0" />
@@ -1075,9 +1073,7 @@ export default function ProformaApp() {
             <Input value={meta.email} onChange={(e) => setMeta({ ...meta, email: e.target.value })} className="footer-input mx-auto h-7 max-w-xl border-0 bg-transparent text-center text-[11px] text-white shadow-none focus-visible:ring-0" />
             <div className="footer-text hidden text-[11px] leading-5">{meta.email || "\u00A0"}</div>
           </div>
-          <div className="absolute bottom-1 end-2 text-[9px] text-white/80">{pageIndex + 1} / {pageRows.length}</div>
           </section>
-          ))}
         </div>
         <p className="mt-4 text-center text-xs text-muted-foreground print:hidden">{t.arabicTip}</p>
       </main>
@@ -1140,12 +1136,9 @@ export default function ProformaApp() {
         }
       `}</style>
 
-      <style>{(() => {
-        const total = layout.widths.reduce((a, b) => a + b, 0) || 1;
-        const cols = layout.widths.map((w, i) => `#printable.export-capture th:nth-child(${i + 1}), #printable.export-capture td:nth-child(${i + 1}) { width: ${(w / total * 1123).toFixed(2)}px !important; max-width: ${(w / total * 1123).toFixed(2)}px !important; }
-        @media print { #printable th:nth-child(${i + 1}), #printable td:nth-child(${i + 1}) { width: ${(w / total * 100).toFixed(2)}% !important; max-width: none !important; } }`).join("\n");
-        return `${cols}`;
-      })()}</style>
+      <style>{DEFAULT_WIDTHS.map((w, i) => `#printable.export-capture th:nth-child(${i + 1}), #printable.export-capture td:nth-child(${i + 1}) { width: ${(w / WIDTH_TOTAL * layout.pageWidth).toFixed(2)}px !important; max-width: ${(w / WIDTH_TOTAL * layout.pageWidth).toFixed(2)}px !important; }
+        @media print { #printable th:nth-child(${i + 1}), #printable td:nth-child(${i + 1}) { width: ${(w / WIDTH_TOTAL * 100).toFixed(2)}% !important; max-width: none !important; } }`).join("\n")}</style>
+
 
       {showCompany && (
         <CompanyModal meta={meta} accent={accent} lang={lang}
@@ -1160,15 +1153,28 @@ export default function ProformaApp() {
 
 function CellInput({ value, onChange, type = "text", align = "center", readOnly = false }: { value: string; onChange: (v: string) => void; type?: string; align?: "left"|"center"|"right"; readOnly?: boolean }) {
   const inputType = type === "number" ? "text" : type;
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [overflow, setOverflow] = useState(false);
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    const check = () => setOverflow(el.scrollWidth > el.clientWidth + 1);
+    check();
+    const observer = new ResizeObserver(check);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [value]);
   return (
     <>
       <input
+        ref={inputRef}
         type={inputType}
         inputMode={type === "number" ? "decimal" : undefined}
         value={value}
         readOnly={readOnly}
         onChange={(e) => onChange(e.target.value)}
-        className={`cell-input w-full rounded border border-input px-1.5 py-1 outline-none transition focus:border-foreground focus:ring-1 focus:ring-foreground/20 print:hidden ${readOnly ? "cursor-not-allowed bg-muted/50 text-muted-foreground" : "bg-white"}`}
+        title={overflow ? "النص أكبر من المربع / text is wider than the cell" : undefined}
+        className={`cell-input w-full rounded border px-1.5 py-1 outline-none transition focus:ring-1 focus:ring-foreground/20 print:hidden ${overflow ? "border-red-500 ring-1 ring-red-400" : "border-input focus:border-foreground"} ${readOnly ? "cursor-not-allowed bg-muted/50 text-muted-foreground" : "bg-white"}`}
         style={{ textAlign: align, fontSize: "inherit", fontWeight: "inherit" }}
       />
       <div
@@ -1185,7 +1191,7 @@ function ImgCell({ src, onPick, icon }: { src: string; onPick: (f: File | null) 
   const [editSrc, setEditSrc] = useState<string | null>(null);
   return (
     <>
-      <button type="button" onClick={() => (src ? setEditSrc(src) : ref.current?.click())} className={`img-cell-btn mx-auto flex h-[calc(100%-8px)] max-h-full w-[calc(100%-8px)] items-center justify-center overflow-hidden rounded border ${src ? "" : "border-dashed bg-muted/30"} hover:border-foreground`} style={{ minHeight: 64 }}>
+      <button type="button" onClick={() => (src ? setEditSrc(src) : ref.current?.click())} className={`img-cell-btn mx-auto flex w-[calc(100%-8px)] items-center justify-center overflow-hidden rounded border ${src ? "" : "border-dashed bg-muted/30"} hover:border-foreground`} style={{ height: ROW_HEIGHT - 12, maxHeight: ROW_HEIGHT - 12 }}>
         {src ? <img src={src} crossOrigin="anonymous" alt="" className="h-full w-full object-contain" /> : icon === "img" ? <ImageIcon className="h-4 w-4 text-muted-foreground" /> : <Package className="h-4 w-4 text-muted-foreground" />}
       </button>
       <input
@@ -1278,10 +1284,10 @@ function ImageAdjuster({ src, onDone, onCancel, onPickFile }: { src: string; onD
     </div>
   );
 }
-function RowEditor({ index, row, accent, lang, lockCW = false, height, columnStyles, cellStyles, selectedCell, onSelectCell, onHeightChange, onChange, onImage, onPacking, onDuplicate, onRemove, onSend }:
+function RowEditor({ index, row, accent, lang, lockCW = false, columnStyles, cellStyles, selectedCell, onSelectCell, onChange, onImage, onPacking, onDuplicate, onRemove, onSend }:
   { index: number; row: Row; accent: string; lang: Lang; lockCW?: boolean;
-    height: number; columnStyles: TextFormat[]; cellStyles: Record<string, TextFormat>; selectedCell: { rowId: string; col: number } | null;
-    onSelectCell: (col: number) => void; onHeightChange: (height: number) => void;
+    columnStyles: TextFormat[]; cellStyles: Record<string, TextFormat>; selectedCell: { rowId: string; col: number } | null;
+    onSelectCell: (col: number) => void;
     onChange: (p: Partial<Row>) => void; onImage: (f: File | null) => void; onPacking: (f: File | null) => void;
     onDuplicate: () => void; onRemove: () => void; onSend: () => void; }) {
   const amt = amount(row); const tc = tCbm(row); const tw = tWeight(row);
@@ -1292,7 +1298,7 @@ function RowEditor({ index, row, accent, lang, lockCW = false, height, columnSty
   };
   const cellClass = (col: number) => selectedCell?.rowId === row.id && selectedCell.col === col ? "ring-2 ring-inset ring-foreground/40" : "";
   return (
-    <tr className="relative border-b align-middle hover:bg-muted/20" style={{ height }}>
+    <tr className="relative border-b align-middle hover:bg-muted/20" style={{ height: ROW_HEIGHT }}>
       <td onClick={() => onSelectCell(0)} className={`px-1 text-center text-xs font-semibold text-muted-foreground ${cellClass(0)}`} style={styleFor(0)}>{index}</td>
       <td onClick={() => onSelectCell(1)} className={`px-1 ${cellClass(1)}`} style={styleFor(1)}><CellInput value={row.itemName} onChange={(v) => onChange({ itemName: v })} align="left" /></td>
       <td onClick={() => onSelectCell(2)} className={`px-1 ${cellClass(2)}`} style={styleFor(2)}><CellInput value={row.description} onChange={(v) => onChange({ description: v })} align="left" /></td>
@@ -1314,12 +1320,6 @@ function RowEditor({ index, row, accent, lang, lockCW = false, height, columnSty
           <button onClick={onDuplicate} title={tt.duplicate} className="rounded p-1 hover:bg-muted"><Copy className="h-3.5 w-3.5" /></button>
           <button onClick={onRemove} title={tt.delete} className="rounded p-1 text-destructive hover:bg-destructive/10"><Trash2 className="h-3.5 w-3.5" /></button>
         </div>
-        <span className="row-resizer absolute bottom-0 left-0 h-2 w-full cursor-row-resize" onPointerDown={(event) => {
-          event.preventDefault(); const start = event.clientY; const initial = height;
-          const move = (e: PointerEvent) => onHeightChange(initial + e.clientY - start);
-          const up = () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); };
-          window.addEventListener("pointermove", move); window.addEventListener("pointerup", up);
-        }} />
       </td>
     </tr>
   );
